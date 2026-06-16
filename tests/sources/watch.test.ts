@@ -47,4 +47,22 @@ describe('watchRoot', () => {
       w.stop();
     }
   });
+
+  it('guards against overlapping polls (re-entrancy)', async () => {
+    await writeFile(join(dir, 'a.jsonl'), 'one\n');
+    const w = watchRoot(dir, () => {}, { intervalMs: 60_000 });
+    try {
+      await w.poll(); // seed baseline
+      await writeFile(join(dir, 'b.jsonl'), 'two\n');
+      // Invoke twice without awaiting the first: the synchronous prologue of the
+      // first call sets the guard, so the second returns false immediately.
+      const p1 = w.poll();
+      const p2 = w.poll();
+      const [r1, r2] = await Promise.all([p1, p2]);
+      expect(r1).toBe(true);
+      expect(r2).toBe(false);
+    } finally {
+      w.stop();
+    }
+  });
 });

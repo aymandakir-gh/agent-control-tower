@@ -3,10 +3,33 @@
 Living status log for `agent-control-tower`. Newest first. Kept current every slice.
 
 ## Now
-- **Milestone:** M4 — Launch polish. **COMPLETE** → tagging v1.0.0 (launch).
-- **State:** All four milestones done. README, CONTRIBUTING, demo tooling, and GitHub
-  templates written. `npx`-equivalent verified from a packed tarball (bins + sample fixtures
-  resolve from a clean install). 100 tests green; CI green on Node 20 & 22.
+- **Milestone:** All four shipped (v0.1.0–v1.0.0). **v1.0.1** = post-launch hardening from a
+  multi-agent adversarial review.
+- **State:** Launched. Ran a 5-dimension adversarial review workflow over the core; fixed the
+  confirmed findings; 107 tests green; CI green on Node 20 & 22.
+
+## v1.0.1 — Adversarial-review fixes
+Ran an 11-agent review (review → verify) over parser/FSM/cost/sources/web. Confirmed 6
+findings; fixed 5, declined 1 with rationale:
+- ✅ Parser emits **one event per `tool_result` block** (was collapsing batched results, losing
+  toolUseId pairing). Real Claude Code never batches, so zero regression — robustness for
+  parallel-tool / other-source transcripts.
+- ✅ **Windows-safe** sessionId backfill in `readTranscript` (used a `/`-only basename).
+- ✅ **`--root` now honored** by both TUI and web (root resolution moved into `loadFleetView`
+  via `options.root`; was silently ignored).
+- ✅ Watcher **re-entrancy guard** (overlapping slow polls could race on shared state).
+- ✅ `/api/timeline?limit=0` returns `[]` (was `slice(-0)` → whole array).
+- ⚖️ Declined: cache-aggregate→5m-tier attribution. 5m is the default TTL and real records
+  always carry the split, so this fallback is effectively dead; clarified the comment instead.
+
+## M4 — Done
+- ✅ Excellent README: one-liner, embedded board demo, exact vhs/asciinema recording steps,
+  one-line `npx` install, "why this exists", privacy section, HTTP API table, roadmap.
+- ✅ Delightful empty state + `--sample` toggle in both frontends (TUI + web) — verified.
+- ✅ `npx agent-control-tower` works from a clean pack: `prepack` builds; `files` ships
+  `dist` + sample fixtures + README + LICENSE; installed `agent-control-tower`/`act` bins run.
+- ✅ CONTRIBUTING.md, issue templates (bug/feature), PR template, demo/ (vhs tape + README +
+  walkthrough.sh).
 
 ## M4 — Done
 - ✅ Excellent README: one-liner, embedded board demo, exact vhs/asciinema recording steps,

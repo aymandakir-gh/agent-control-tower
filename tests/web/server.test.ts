@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { createServer } from '../../src/web/server.js';
+import { sampleRoot } from '../../src/sources/transcripts.js';
 
 let app: FastifyInstance;
 
@@ -42,6 +43,13 @@ describe('web API (sample fleet)', () => {
     expect(body.count).toBe(3);
   });
 
+  it('GET /api/timeline?limit=0 returns an empty list (not the whole array)', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/timeline?limit=0' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().entries).toHaveLength(0);
+    expect(res.json().count).toBe(0);
+  });
+
   it('GET /api/agents/:id returns one agent, 404 when unknown', async () => {
     const ok = await app.inject({ method: 'GET', url: '/api/agents/a1111111-working-bash' });
     expect(ok.statusCode).toBe(200);
@@ -58,5 +66,20 @@ describe('web API (sample fleet)', () => {
     expect(res.headers['content-type']).toContain('text/html');
     expect(res.body).toContain('agent-control-tower');
     expect(res.body).toContain('/api/fleet');
+  });
+});
+
+describe('web API — explicit --root', () => {
+  it('honors a root option instead of the default ~/.claude root', async () => {
+    const rooted = createServer({ root: sampleRoot() });
+    try {
+      const res = await rooted.inject({ method: 'GET', url: '/api/health' });
+      const body = res.json();
+      expect(body.root).toBe(sampleRoot());
+      expect(body.sample).toBe(false);
+      expect(body.agents).toBe(5);
+    } finally {
+      await rooted.close();
+    }
   });
 });

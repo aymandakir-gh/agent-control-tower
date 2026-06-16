@@ -1,5 +1,8 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { loadFleetView, sampleRoot, scanRoot } from '../../src/sources/transcripts.js';
+import { loadFleetView, readTranscript, sampleRoot, scanRoot } from '../../src/sources/transcripts.js';
 import type { AgentSnapshot } from '../../src/core/index.js';
 
 const byProject = (agents: AgentSnapshot[], project: string): AgentSnapshot =>
@@ -48,5 +51,30 @@ describe('sources/transcripts — sample fleet', () => {
   it('scanRoot returns parsed transcripts and never throws on a missing root', async () => {
     const none = await scanRoot('/no/such/path/hopefully');
     expect(none).toEqual([]);
+  });
+
+  it('honors an explicit root passed via options.root (not just sample/default)', async () => {
+    const view = await loadFleetView({ root: sampleRoot() });
+    expect(view.root).toBe(sampleRoot());
+    expect(view.sample).toBe(false);
+    expect(view.fileCount).toBe(5);
+  });
+});
+
+describe('sources/transcripts — sessionId backfill', () => {
+  it('backfills sessionId from the filename when records omit it', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'act-bf-'));
+    try {
+      const file = join(dir, 'fallback-name.jsonl');
+      // A record with NO sessionId field.
+      await writeFile(
+        file,
+        JSON.stringify({ type: 'assistant', timestamp: '2026-06-16T10:00:00.000Z', message: { role: 'assistant', model: 'claude-opus-4-8', content: [], stop_reason: 'end_turn' } }) + '\n',
+      );
+      const parsed = await readTranscript(file);
+      expect(parsed.sessionId).toBe('fallback-name');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

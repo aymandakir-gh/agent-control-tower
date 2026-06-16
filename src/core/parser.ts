@@ -35,7 +35,11 @@ export function normalizeUsage(usage: unknown): TokenUsage | undefined {
   const cc = (u.cache_creation as Record<string, unknown> | undefined) ?? {};
   let cacheWrite5m = num(cc.ephemeral_5m_input_tokens);
   const cacheWrite1h = num(cc.ephemeral_1h_input_tokens);
-  // Fallback when only the aggregate is present (older/edge records).
+  // Fallback for edge/legacy records that carry only the aggregate and no
+  // per-TTL split. We attribute it to the 5m tier because 5m is the default
+  // cache TTL (1h is opt-in extended caching); real Claude Code records always
+  // include the split, so this path is effectively dead and cost is an estimate
+  // either way.
   if (cacheWrite5m === 0 && cacheWrite1h === 0 && num(u.cache_creation_input_tokens) > 0) {
     cacheWrite5m = num(u.cache_creation_input_tokens);
   }
@@ -80,7 +84,12 @@ function envelope(rec: Record<string, unknown>, seq: number): Envelope {
   };
 }
 
-function normalizeRecord(rec: Record<string, unknown>, seq: number): NormalizedEvent {
+/**
+ * Normalize one raw record into one or more normalized events. A `user` record
+ * carrying several `tool_result` blocks (parallel tool execution) yields one
+ * `tool_result` event per block so the FSM can pair each with its `tool_use`.
+ */
+function normalizeRecord(rec: Record<string, unknown>, seq: number): NormalizedEvent[] {
   const env = envelope(rec, seq);
   const type = str(rec.type) ?? 'unknown';
   const message = rec.message as Record<string, unknown> | undefined;
@@ -110,36 +119,36 @@ function normalizeRecord(rec: Record<string, unknown>, seq: number): NormalizedE
         textLength = content.length;
       }
       const usage = normalizeUsage(message?.usage);
-      return {
-        ...env,
-        kind: 'assistant_message',
-        model: str(message?.model) ?? 'unknown',
-        ...(str(message?.stop_reason) !== undefined ? { stopReason: str(message?.stop_reason) } : {}),
-        ...(usage ? { usage } : {}),
-        toolUses,
-        textLength,
-        hasThinking,
-      };
+      return [
+        {
+          ...env,
+          kind: 'assistant_message',
+          model: str(message?.model) ?? 'unknown',
+          ...(str(message?.stop_reason) !== undefined ? { stopReason: str(message?.stop_reason) } : {}),
+          ...(usage ? { usage } : {}),
+          toolUses,
+          textLength,
+          hasThinking,
+        },
+      ];
     }
 
     case 'user': {
       const content = message?.content;
-      // Array content carrying tool_result block(s) → tool result(s).
+      // Array content carrying tool_result block(s) → one event per block, so
+      // each result pairs 1:1 with its originating tool_use in the FSM.
       if (Array.isArray(content)) {
         const results = content.filter(
           (b): b is Record<string, unknown> =>
             !!b && typeof b === 'object' && (b as Record<string, unknown>).type === 'tool_result',
         );
         if (results.length > 0) {
-          // Collapse to one normalized event marking error if ANY block errored.
-          const first = results[0];
-          const isError = results.some((r) => r.is_error === true);
-          return {
-            ...env,
+          return results.map((r, i) => ({
+            ...envelope(rec, seq + i),
             kind: 'tool_result',
-            ...(str(first.tool_use_id) !== undefined ? { toolUseId: str(first.tool_use_id) } : {}),
-            isError,
-          };
+            ...(str(r.tool_use_id) !== undefined ? { toolUseId: str(r.tool_use_id) } : {}),
+            isError: r.is_error === true,
+          }));
         }
         // Array of text blocks with no tool_result → treat as a human prompt.
         const text = content
@@ -149,31 +158,35 @@ function normalizeRecord(rec: Record<string, unknown>, seq: number): NormalizedE
               : '',
           )
           .join('');
-        return { ...env, kind: 'human_prompt', text };
+        return [{ ...env, kind: 'human_prompt', text }];
       }
-      return { ...env, kind: 'human_prompt', text: str(content) ?? '' };
+      return [{ ...env, kind: 'human_prompt', text: str(content) ?? '' }];
     }
 
     case 'system': {
       const subtype = str(rec.subtype);
       if (subtype === 'turn_duration') {
-        return {
-          ...env,
-          kind: 'turn_duration',
-          durationMs: num(rec.durationMs),
-          ...(rec.messageCount !== undefined ? { messageCount: num(rec.messageCount) } : {}),
-        };
+        return [
+          {
+            ...env,
+            kind: 'turn_duration',
+            durationMs: num(rec.durationMs),
+            ...(rec.messageCount !== undefined ? { messageCount: num(rec.messageCount) } : {}),
+          },
+        ];
       }
-      return {
-        ...env,
-        kind: 'system',
-        ...(subtype !== undefined ? { subtype } : {}),
-        isError: systemIsError(rec),
-      };
+      return [
+        {
+          ...env,
+          kind: 'system',
+          ...(subtype !== undefined ? { subtype } : {}),
+          isError: systemIsError(rec),
+        },
+      ];
     }
 
     default:
-      return { ...env, kind: 'meta', recordType: type };
+      return [{ ...env, kind: 'meta', recordType: type }];
   }
 }
 
@@ -218,10 +231,13 @@ export function parseTranscript(text: string): ParsedTranscript {
       if (str(rec.version)) version = str(rec.version);
     }
 
-    const event = normalizeRecord(rec, seq++);
+    const normalized = normalizeRecord(rec, seq);
+    seq += normalized.length;
     stats.parsed++;
-    if (event.isSidechain) sidechainEvents.push(event);
-    else events.push(event);
+    for (const event of normalized) {
+      if (event.isSidechain) sidechainEvents.push(event);
+      else events.push(event);
+    }
   }
 
   return {

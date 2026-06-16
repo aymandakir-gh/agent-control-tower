@@ -11,6 +11,7 @@ import { homedir } from 'node:os';
 import { dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  basename,
   buildFleet,
   buildTimeline,
   parseTranscript,
@@ -78,9 +79,10 @@ export async function findSessionFiles(root: string): Promise<SessionFileRef[]> 
 export async function readTranscript(path: string): Promise<ParsedTranscript> {
   const text = await readFile(path, 'utf8');
   const parsed = parseTranscript(text);
-  // Backfill sessionId from the filename when records omit it.
+  // Backfill sessionId from the filename when records omit it. Use a
+  // separator-agnostic basename so this is correct on Windows paths too.
   if (!parsed.sessionId) {
-    const name = path.slice(path.lastIndexOf('/') + 1).replace(/\.jsonl$/, '');
+    const name = basename(path).replace(/\.jsonl$/, '');
     return { ...parsed, sessionId: name };
   }
   return parsed;
@@ -108,6 +110,8 @@ export interface LoadOptions {
   now?: number;
   /** Load the bundled sample fleet instead of the real root. */
   sample?: boolean;
+  /** Explicit transcript root. Overrides the default; ignored in sample mode. */
+  root?: string;
   config?: FsmConfig;
   pricing?: PricingTable;
   /** Max timeline entries to return. */
@@ -139,12 +143,13 @@ export function resolveNow(transcripts: ParsedTranscript[], opts: LoadOptions, w
 /** Top-level: scan a root and produce a fleet + timeline view for the frontends. */
 export async function loadFleetView(rootOrOptions: string | LoadOptions = {}, maybeOptions: LoadOptions = {}): Promise<FleetView> {
   const options: LoadOptions = typeof rootOrOptions === 'string' ? maybeOptions : rootOrOptions;
+  // Root precedence: explicit positional arg → options.root → sample/default.
   const root =
     typeof rootOrOptions === 'string'
       ? rootOrOptions
       : options.sample
         ? sampleRoot()
-        : defaultRoot();
+        : (options.root ?? defaultRoot());
 
   const transcripts = await scanRoot(root);
   const now = resolveNow(transcripts, options, Date.now());

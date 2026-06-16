@@ -38,14 +38,23 @@ export function watchRoot(root: string, onChange: () => void, opts: WatchOptions
   let last = '';
   let timer: ReturnType<typeof setInterval> | undefined;
   let initialized = false;
+  let polling = false;
 
   const poll = async (): Promise<boolean> => {
-    const sig = signature(await findSessionFiles(root));
-    const changed = initialized && sig !== last;
-    last = sig;
-    initialized = true;
-    if (changed) onChange();
-    return changed;
+    // Re-entrancy guard: if a scan is slower than the interval, skip overlapping
+    // ticks so concurrent runs can't race on `last`/`initialized`.
+    if (polling) return false;
+    polling = true;
+    try {
+      const sig = signature(await findSessionFiles(root));
+      const changed = initialized && sig !== last;
+      last = sig;
+      initialized = true;
+      if (changed) onChange();
+      return changed;
+    } finally {
+      polling = false;
+    }
   };
 
   // The first poll (interval tick or explicit) seeds the baseline and reports

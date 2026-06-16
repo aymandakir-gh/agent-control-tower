@@ -109,6 +109,29 @@ describe('deriveAgentState — precedence table (PRD §6)', () => {
     expect(snap.reason).toContain('tool results');
   });
 
+  it('resolves each tool of a parallel batch independently (no phantom running tool)', () => {
+    // assistant fires two tools; both results come back in ONE user message.
+    const b = new TranscriptBuilder();
+    b.prompt('do both')
+      .assistant({ tools: [{ name: 'Bash', id: 'toolu_1' }, { name: 'Read', id: 'toolu_2' }] })
+      .raw({
+        type: 'user',
+        timestamp: new Date(b.clock + 1000).toISOString(),
+        sessionId: 'sess-00000000',
+        message: {
+          role: 'user',
+          content: [
+            { type: 'tool_result', tool_use_id: 'toolu_1', is_error: false, content: 'ok' },
+            { type: 'tool_result', tool_use_id: 'toolu_2', is_error: false, content: 'ok' },
+          ],
+        },
+      });
+    const snap = deriveAgentState(parse(b), b.clock + 3_000);
+    // Both pending tools resolved → not "executing tool", but awaiting the reply.
+    expect(snap.status).toBe('working');
+    expect(snap.reason).toContain('awaiting tool results');
+  });
+
   it('empty transcript → idle', () => {
     const snap = deriveAgentState(parseTranscript(''), Date.parse('2026-06-16T10:00:00Z'));
     expect(snap.status).toBe('idle');

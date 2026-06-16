@@ -30,6 +30,7 @@ function loadOptionsFrom(opts: WebServerOptions): LoadOptions {
     opts.idleMs !== undefined ? { idleMs: opts.idleMs, interactiveTools: ['AskUserQuestion'] } : undefined;
   return {
     sample: opts.sample ?? false,
+    ...(opts.root ? { root: opts.root } : {}),
     ...(config ? { config } : {}),
   };
 }
@@ -50,8 +51,8 @@ export function createServer(opts: WebServerOptions = {}): FastifyInstance {
   const loadOpts = loadOptionsFrom(opts);
   const indexHtml = readIndexHtml();
 
-  const view = async (): Promise<FleetView> =>
-    opts.root ? load({ ...loadOpts }) : load(loadOpts);
+  // root (when set) now travels inside loadOpts, honored by loadFleetView.
+  const view = async (): Promise<FleetView> => load(loadOpts);
 
   app.get('/api/health', async () => {
     const v = await view();
@@ -84,9 +85,10 @@ export function createServer(opts: WebServerOptions = {}): FastifyInstance {
     const v = await view();
     const q = req.query as { limit?: string };
     const limit = q.limit !== undefined ? Number(q.limit) : undefined;
+    // slice from a clamped start so limit=0 → [] (avoids the slice(-0) === full-array trap).
     const entries =
       limit !== undefined && Number.isFinite(limit) && limit >= 0
-        ? v.timeline.slice(-limit)
+        ? v.timeline.slice(Math.max(0, v.timeline.length - limit))
         : v.timeline;
     return { now: v.now, count: entries.length, entries };
   });

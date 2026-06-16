@@ -49,6 +49,26 @@ describe('parseTranscript — normalization', () => {
     expect(tr.toolUseId).toBe('toolu_1');
   });
 
+  it('emits one tool_result event per block when results are batched in one message', () => {
+    const text =
+      JSON.stringify({
+        type: 'user',
+        timestamp: '2026-06-16T10:00:00.000Z',
+        sessionId: 's1',
+        message: {
+          role: 'user',
+          content: [
+            { type: 'tool_result', tool_use_id: 'toolu_1', is_error: false, content: 'ok' },
+            { type: 'tool_result', tool_use_id: 'toolu_2', is_error: true, content: 'boom' },
+          ],
+        },
+      }) + '\n';
+    const parsed = parseTranscript(text);
+    expect(parsed.events).toHaveLength(2);
+    expect(parsed.events[0]).toMatchObject({ kind: 'tool_result', toolUseId: 'toolu_1', isError: false, seq: 0 });
+    expect(parsed.events[1]).toMatchObject({ kind: 'tool_result', toolUseId: 'toolu_2', isError: true, seq: 1 });
+  });
+
   it('treats a user array of text blocks (no tool_result) as a human prompt', () => {
     const text =
       JSON.stringify({
