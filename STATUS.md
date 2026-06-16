@@ -3,10 +3,28 @@
 Living status log for `agent-control-tower`. Newest first. Kept current every slice.
 
 ## Now
-- **Milestone:** All four shipped (v0.1.0–v1.0.0). **v1.0.1** = post-launch hardening from a
-  multi-agent adversarial review.
-- **State:** Launched. Ran a 5-dimension adversarial review workflow over the core; fixed the
-  confirmed findings; 107 tests green; CI green on Node 20 & 22.
+- **Milestone:** Shipped v0.1.0–v1.0.1. **Starting the v2.0.0 program** (M5→M10, one tag per
+  milestone): source-agnostic core → alerting → history/replay → real management actions →
+  web dashboard upgrade → adversarial review → `v2.0.0`.
+- **State:** Baseline re-verified green before any v2 work — 107 tests, `src/core` 99.68% lines
+  / 100% funcs, typecheck + lint clean, `pnpm build` ok, CLI runs vs `--sample` and real
+  `~/.claude` (357 sessions, read-only). PRD.md updated with M5–M10 + specs §12–§15.
+
+## v2.0.0 — plan & decisions
+- **Tag map:** v1.1.0 = M5 adapters · v1.2.0 = M6 alerting · v1.3.0 = M7 history/replay ·
+  v1.4.0 = M8 control · v1.5.0 = M9 web upgrade · v2.0.0 = M10 review + launch.
+- **Read-only promise kept:** management actions (M8) act on **OS processes/terminals only**,
+  never on files under the scanned root; history recorder (M7) writes to a dedicated app
+  state dir, never `~/.claude`. Web stays `127.0.0.1`, offline, no telemetry.
+- **Execution strategy (recorded):** each milestone is implemented + verified directly in the
+  main loop (spec → tests → code → `build && typecheck && lint && test` → run CLI/web vs
+  fixtures *and* real `~/.claude`), because the work is tightly coupled and the rule is "never
+  claim done without running it." The **mandatory multi-agent adversarial review** (goal #8)
+  runs as a Workflow before v2.0.0; parallel agents are used opportunistically for independent
+  drafting (docs/fixtures) where they don't fight over shared files.
+- **Pure-core discipline:** new pure logic (generic parser, alerts, replay, trend) lives in
+  `src/core/**` under the ≥95% coverage gate; I/O (adapters' discover/read, history writer,
+  process control) lives in `src/sources` / `src/history` / `src/control` and is integration-tested.
 
 ## v1.0.1 — Adversarial-review fixes
 Ran an 11-agent review (review → verify) over parser/FSM/cost/sources/web. Confirmed 6

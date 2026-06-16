@@ -58,21 +58,28 @@ A release is successful if:
 - Derive per-agent **state** via a documented finite-state machine (pure).
 - Estimate **tokens & cost** per agent and for the fleet, from `usage` blocks (pure).
 - Build a unified **cross-agent timeline** of notable events (pure).
-- **TUI**: live board (status / tool / turn duration / cost), auto-refresh, sort, detail view.
-  `kill` / `focus` actions are **stubbed** (print intent) — state shown is real.
-- **Web dashboard**: sortable table + timeline + cost over the HTTP API. Self-contained page.
+- **TUI**: live board (status / tool / turn duration / cost), auto-refresh, sort, detail view,
+  **live alerts panel**, and **real, safety-gated management actions** (focus / pause / resume).
+- **Web dashboard**: filterable table + timeline + cost-over-time + per-agent drill-down + alerts
+  over the HTTP API. Self-contained, offline page (inline CSS/SVG; no CDN).
 - Live updates via filesystem watching (debounced), plus a manual refresh.
+- **Source-agnostic core** (v2.0): a documented `SourceAdapter` interface; Claude Code is the
+  reference adapter, with a second **generic JSONL/hook** adapter so other frameworks can feed in.
+- **Session replay**: reconstruct any past session's timeline and state-over-time from the
+  stored transcript (and an opt-in fleet history recorder for long-range cost trends).
+- **Configurable alerting**: rules (idle > N min, error, waiting-for-input, cost ceiling,
+  long-running turn) evaluated by a pure engine, surfaced in **both** the TUI and the web.
 
 ### Non-goals (explicit)
 - ❌ **Writing/mutating** real `~/.claude` data. The app is **strictly read-only** there.
-  All write-path tests use generated fixtures under `tests/fixtures/`.
-- ❌ Actually killing/steering live agent processes in v0.x (`kill`/`focus` are stubs that
-  emit intent; real control is a post-1.0 roadmap item gated behind explicit opt-in).
+  All write-path tests use generated fixtures under `tests/fixtures/`. The management actions
+  (v2.0) act only on **OS processes / terminals** — never on any file under the scanned root.
 - ❌ Cloud sync, accounts, multi-machine aggregation, telemetry, or any outbound network call.
 - ❌ Being a perfectly accurate billing system. Cost is a clearly-labelled **estimate** with
   a configurable, documented pricing table.
-- ❌ Supporting every agent framework on day one. Claude Code transcripts are the M1 source;
-  the event model is designed so other sources can be adapted later.
+- ❌ Force-killing or destructively signaling processes by default. Control is **safety-gated**
+  and **opt-in**: actions are reversible (SIGSTOP/SIGCONT pause/resume, terminal focus) and
+  refused unless the target is unambiguously resolved and explicitly allowed.
 
 ## 5. Data sources
 
@@ -195,12 +202,87 @@ Stack: TypeScript (strict) + Node 20+, pnpm, Vitest, ESLint. Ink for TUI; Fastif
 - [x] `--sample` serves bundled fixtures so the page is alive with zero real agents.
 - [x] No external CDN/network; assets served locally; binds to 127.0.0.1. Read-only.
 
-### M4 — Launch polish  → tag `v1.0.0`
-- [ ] Excellent README: one-liner, animated demo placeholder + exact vhs/asciinema record steps,
+### M4 — Launch polish  → tag `v1.0.0` ✅ shipped
+- [x] Excellent README: one-liner, animated demo placeholder + exact vhs/asciinema record steps,
       one-line install (`npx agent-control-tower`), "why this exists", privacy, roadmap.
-- [ ] Delightful empty state + `--sample` data toggle in both frontends.
-- [ ] `npx agent-control-tower` works from a clean checkout/pack.
-- [ ] `CONTRIBUTING.md`, issue/PR templates, screenshots/GIF instructions, demo script.
+- [x] Delightful empty state + `--sample` data toggle in both frontends.
+- [x] `npx agent-control-tower` works from a clean checkout/pack.
+- [x] `CONTRIBUTING.md`, issue/PR templates, screenshots/GIF instructions, demo script.
+
+---
+
+## v2.0.0 program — from observer to *control tower*
+
+v1.x observes a Claude Code fleet. **v2.0** makes the core source-agnostic, adds persistent
+history + replay, configurable alerting, a richer web dashboard, and turns the stubbed
+`kill`/`focus` keys into **real, safety-gated** management actions. One tag per milestone;
+CI green at every tag; read-only/local-first/no-network preserved throughout.
+
+### M5 — Source-agnostic core (`SourceAdapter` + 2nd adapter)  → tag `v1.1.0`
+- [ ] Documented `SourceAdapter` interface (`src/sources/adapter.ts`): `id`, `displayName`,
+      `defaultRoot()`, `discover(root)` + `read(ref)` (read-only I/O), and a **pure** `parse(text)`.
+- [ ] Reference **Claude Code** adapter (wraps the existing parser/discovery) + a second
+      **generic JSONL/hook** adapter (`src/core/generic.ts` pure parser for a documented,
+      framework-neutral line schema) so non-Claude agents can feed the same core.
+- [ ] A **fixture-backed conformance suite** (`tests/sources/conformance.ts`): canonical
+      scenarios (working / waiting / error / idle / cost) expressed in each adapter's native
+      dialect; both adapters derive the **same** semantics. Both adapters pass.
+- [ ] `--source <id>` flag selects the adapter across scan / tui / web; `loadFleetView` is
+      adapter-aware. Verified against fixtures and real `~/.claude`.
+- [ ] `src/core` line coverage ≥ 95%. Suite green.
+
+### M6 — Configurable alerting (pure engine, surfaced in TUI + web)  → tag `v1.2.0`
+- [ ] `src/core/alerts.ts`: pure `evaluateAlerts(fleet, rules, now) → Alert[]`. Rule types:
+      `idle` (> N min), `error`, `waiting` (for input), `cost` (≥ $X), `long-turn` (> N min).
+      Defaults documented; thresholds configurable; severities (`info`/`warn`/`critical`).
+- [ ] **100%** unit coverage of the rule engine against fixtures — each rule asserted to fire
+      AND to stay silent on the right inputs (no padding).
+- [ ] Alerts surfaced in **both** frontends: a TUI alerts panel + per-row badge, and a web
+      alerts section + per-row indicator. `/api/alerts` exposes them.
+- [ ] CLI flags configure rules (`--alert-idle-min`, `--alert-cost`, `--alert-turn-min`).
+- [ ] `src/core` line coverage ≥ 95%. Suite green.
+
+### M7 — Persistent history + session replay  → tag `v1.3.0`
+- [ ] `src/core/replay.ts`: pure `buildSessionReplay(parsed) → ReplayFrame[]` reconstructing a
+      session's **state-over-time** + its own timeline purely from the stored transcript.
+- [ ] `src/core/trend.ts`: pure `buildCostTrend(transcripts, {bucketMs}) → TrendPoint[]`
+      (time-bucketed cumulative cost/tokens) from transcript timestamps + usage.
+- [ ] Opt-in **fleet history recorder** (`src/history/store.ts`): appends fleet samples to a
+      dedicated app data dir (XDG state, **never** `~/.claude`); file-backed, temp-dir tested.
+- [ ] CLI `replay <sessionId|path>` re-renders a past session; `--record` enables the recorder.
+      Tested against fixtures (replay frames + trend buckets asserted exactly).
+- [ ] `src/core` line coverage ≥ 95%. Suite green.
+
+### M8 — Real management actions (focus / pause / resume, safety-gated)  → tag `v1.4.0`
+- [ ] `src/control/`: injectable `Controller` interface (`focus`, `pause`, `resume`), a pure
+      `assessControl(target, action, policy) → {allowed, reason}` safety policy, a
+      `FakeController` (records calls; configurable), and a real `ProcessController`
+      (SIGSTOP/SIGCONT pause/resume; tmux/terminal focus) gated by the policy.
+- [ ] Injectable `ProcessLocator` resolves a session → pid/terminal (best-effort via `ps`/tmux,
+      read-only). Real control executes **only** when the target is unambiguously resolved,
+      not self/PID 1/parent, and explicitly opted-in (`--allow-control`).
+- [ ] Tested **both directions**: acts when allowed (fake + policy), refuses when unsafe
+      (unresolved target, protected pid, opt-in absent, unknown action).
+- [ ] TUI `k`/`f`/`p`-on-agent wired to the controller (defaults to a safe no-op fake unless
+      `--allow-control`); web exposes a guarded `/api/agents/:id/control` (POST, opt-in only).
+- [ ] Read-only-on-`~/.claude` preserved (control touches processes/terminals only). Suite green.
+
+### M9 — Web dashboard upgrade  → tag `v1.5.0`
+- [ ] Live auto-refresh (configurable interval, visible countdown), client-side **filtering**
+      (status chips + project/text search), **per-agent drill-down** (token breakdown, reason,
+      replay timeline, subagents, alerts), and a **cost-trend-over-time** chart.
+- [ ] New API: `/api/alerts`, `/api/trend`, `/api/agents/:id/replay`, `/api/sources`.
+- [ ] Self-contained & offline: inline CSS + SVG charts, no CDN, binds `127.0.0.1`, read-only.
+- [ ] Headless API tests assert every new endpoint; a DOM-free render check guards the page.
+
+### M10 — Adversarial review + v2.0.0 launch polish  → tag `v2.0.0`
+- [ ] Multi-agent adversarial review of the **full v1.0.1…HEAD diff**; fix every confirmed
+      finding, add a regression test per fix, record declined findings with rationale (STATUS).
+- [ ] README refreshed (control-tower framing, adapters, alerts, replay, control, screenshots),
+      demo `vhs` tape updated, CONTRIBUTING current.
+- [ ] ≥ 180 passing tests; `src/core` line coverage ≥ 95% (no padding — a reviewer agent confirms).
+- [ ] `npx agent-control-tower` verified from a packed tarball (`pnpm pack` → install → run).
+- [ ] Version bump to `2.0.0`; CI green; tag `v2.0.0`.
 
 ## 10. Quality bar / workflow (non-negotiable)
 - **Spec-driven**: feature ⇒ acceptance criterion (here or `docs/specs/`) ⇒ test ⇒ code.
@@ -212,3 +294,89 @@ Stack: TypeScript (strict) + Node 20+, pnpm, Vitest, ESLint. Ink for TUI; Fastif
 ## 11. Privacy
 Local-first. Read-only on `~/.claude`. No telemetry. No accounts. **No outbound network calls.**
 Everything runs and stays on your machine. This is a load-bearing product promise.
+
+---
+
+## 12. Source adapters (v2.0 spec)
+
+The core is normalized around `NormalizedEvent` / `ParsedTranscript`. A **`SourceAdapter`**
+plugs a concrete on-disk dialect into that model:
+
+```ts
+interface SourceAdapter {
+  readonly id: string;            // "claude-code" | "generic-jsonl"
+  readonly displayName: string;
+  defaultRoot(): string;          // where this source lives by default
+  discover(root: string): Promise<SessionFileRef[]>;   // read-only I/O
+  read(ref: SessionFileRef): Promise<ParsedTranscript>;// read-only I/O
+  parse(text: string): ParsedTranscript;               // PURE — the conformance contract
+}
+```
+
+- **Claude Code** (`claude-code`): the reference adapter; `parse` = `parseTranscript` (§5).
+- **Generic JSONL/hook** (`generic-jsonl`): a documented, framework-neutral line schema any
+  agent (or a hook script) can emit. One JSON object per line:
+
+  ```json
+  {"ts":"2026-06-16T10:00:00Z","session":"build-1","kind":"prompt","text":"…"}
+  {"ts":"…","session":"build-1","kind":"assistant","model":"gpt-x","stop":"tool_use",
+   "tools":[{"id":"t1","name":"shell"}],"usage":{"input":100,"output":50,"cacheRead":0}}
+  {"ts":"…","session":"build-1","kind":"tool_result","toolUseId":"t1","error":false}
+  {"ts":"…","session":"build-1","kind":"assistant","text":"done","stop":"end_turn"}
+  ```
+  `kind ∈ {prompt, assistant, tool_result, system, turn_duration}`; envelope fields
+  `ts, session, cwd, gitBranch, model, isSidechain, agentId, slug` are optional. The adapter
+  maps these 1:1 to `NormalizedEvent`s, so the **same** FSM / cost / timeline apply unchanged.
+
+**Conformance:** a shared suite runs canonical scenarios (working / waiting / error / idle / cost)
+expressed in each adapter's native dialect through `adapter.parse` → `deriveAgentState`, and
+asserts identical derived semantics. Both adapters must pass.
+
+## 13. Alerting (v2.0 spec)
+
+Pure: `evaluateAlerts(fleet, rules, now) → Alert[]`. A rule is `{ id, type, enabled, ...thresholds }`.
+
+| Type | Fires when | Default | Severity |
+|---|---|---|---|
+| `error` | agent status is `error` | on | critical |
+| `waiting` | agent status is `waiting` on an interactive tool (needs input) | on | warn |
+| `idle` | agent idle longer than `minutes` | off (informational) | info |
+| `long-turn` | active turn longer than `minutes` | 15 min | warn |
+| `cost` | agent estimated cost ≥ `usd` | off | warn |
+
+An `Alert` is `{ ruleId, type, severity, sessionId, project?, message, value? }`. The engine is
+deterministic and **100%** unit-tested (each rule fires on the right input and stays silent
+otherwise). Frontends render alerts as a panel/section + per-agent badges; `/api/alerts` exposes
+them. Thresholds are configurable via CLI flags and `AlertConfig`.
+
+## 14. History & replay (v2.0 spec)
+
+- **Replay** (pure): `buildSessionReplay(parsed) → ReplayFrame[]`. Walks the transcript and emits
+  a frame at each meaningful event with the derived status, current tool, turn duration, and
+  cumulative cost **as of that moment** — i.e. re-renders the session's history from stored data.
+- **Cost trend** (pure): `buildCostTrend(transcripts, {bucketMs}) → TrendPoint[]` — time-bucketed
+  cumulative tokens + USD across the fleet, derived from transcript timestamps + `usage`.
+- **History recorder** (opt-in, I/O): appends periodic fleet samples to a dedicated app data dir
+  (e.g. `$XDG_STATE_HOME/agent-control-tower/` or `~/.local/state/...`) — **never** under the
+  scanned root. File-backed, append-only JSONL, tested with temp dirs. Powers long-range trends
+  beyond what currently-live transcripts contain.
+
+## 15. Management actions (v2.0 spec)
+
+Real control of agent **processes/terminals** — never of files under the scanned root.
+
+```ts
+type ControlAction = 'focus' | 'pause' | 'resume';
+interface ControlTarget { sessionId: string; cwd?: string; pid?: number; }
+interface Controller { run(target, action): Promise<ControlResult>; }
+```
+
+- **Pure policy**: `assessControl(target, action, policy) → { allowed: boolean; reason: string }`.
+  Refuses unless: the target resolves to exactly one pid; that pid is not our own / not PID 1 /
+  not our parent; the action is known; and control is explicitly opted-in (`policy.allow`).
+- **`FakeController`** (tests): records calls, configurable to honor or ignore the policy.
+- **`ProcessController`** (real): `pause`/`resume` = `process.kill(pid, 'SIGSTOP'|'SIGCONT')`
+  (reversible); `focus` brings the agent's terminal/tmux pane forward. An injectable
+  **`ProcessLocator`** resolves a session → pid via read-only process enumeration (`ps`)/tmux.
+- Disabled by default. The TUI/web wire to a no-op fake unless `--allow-control` is passed; the
+  web control endpoint is registered only when control is enabled. Tested **both directions**.
