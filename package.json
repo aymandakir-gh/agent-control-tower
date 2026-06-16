@@ -39,7 +39,7 @@
   },
   "packageManager": "pnpm@9.15.0",
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && node scripts/copy-assets.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -62,6 +62,7 @@
     "vitest": "^2.1.8"
   },
   "dependencies": {
+    "fastify": "^5",
     "ink": "^5",
     "react": "^18"
   }

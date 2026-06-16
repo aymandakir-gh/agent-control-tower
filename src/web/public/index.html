@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>agent-control-tower</title>
+    <style>
+      :root {
+        --bg: #0d1117;
+        --panel: #161b22;
+        --panel2: #1c2230;
+        --border: #30363d;
+        --text: #e6edf3;
+        --dim: #8b949e;
+        --accent: #58a6ff;
+        --working: #3fb950;
+        --waiting: #d29922;
+        --error: #f85149;
+        --idle: #6e7681;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      }
+      a { color: var(--accent); }
+      .wrap { max-width: 1180px; margin: 0 auto; padding: 24px 20px 60px; }
+      header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+      h1 { font-size: 20px; margin: 0; letter-spacing: -0.2px; }
+      h1 .dot { color: var(--accent); }
+      .sub { color: var(--dim); font-size: 13px; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      .chips { display: flex; gap: 8px; flex-wrap: wrap; margin: 16px 0 8px; }
+      .chip {
+        display: inline-flex; align-items: center; gap: 7px;
+        background: var(--panel); border: 1px solid var(--border);
+        border-radius: 999px; padding: 5px 12px; font-size: 13px;
+      }
+      .chip b { font-variant-numeric: tabular-nums; }
+      .swatch { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+      .s-working { color: var(--working); } .bg-working { background: var(--working); }
+      .s-waiting { color: var(--waiting); } .bg-waiting { background: var(--waiting); }
+      .s-error { color: var(--error); } .bg-error { background: var(--error); }
+      .s-idle { color: var(--idle); } .bg-idle { background: var(--idle); }
+
+      .bar { display: flex; height: 8px; border-radius: 6px; overflow: hidden; margin: 10px 0 22px; background: var(--panel); }
+      .bar > span { display: block; }
+
+      .grid { display: grid; grid-template-columns: 2fr 1fr; gap: 18px; align-items: start; }
+      @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+      .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 4px 0; }
+      .panel h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--dim); margin: 14px 16px 8px; }
+
+      table { width: 100%; border-collapse: collapse; }
+      th, td { text-align: left; padding: 9px 14px; white-space: nowrap; }
+      th {
+        font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--dim);
+        cursor: pointer; user-select: none; border-bottom: 1px solid var(--border);
+      }
+      th:hover { color: var(--text); }
+      th.sorted::after { content: " ▾"; color: var(--accent); }
+      tbody tr { border-bottom: 1px solid #21262d; }
+      tbody tr:last-child { border-bottom: none; }
+      tbody tr:hover { background: var(--panel2); }
+      td.num { text-align: right; font-variant-numeric: tabular-nums; font-family: ui-monospace, Menlo, monospace; }
+      .status-cell { font-weight: 600; }
+      .glyph { display: inline-block; width: 1.2em; }
+      .tool { color: var(--accent); font-family: ui-monospace, Menlo, monospace; }
+      .stale { color: var(--waiting); }
+
+      .costbars { padding: 4px 16px 14px; display: flex; flex-direction: column; gap: 8px; }
+      .costrow { display: grid; grid-template-columns: 120px 1fr 70px; align-items: center; gap: 10px; font-size: 12px; }
+      .costrow .track { background: var(--panel2); border-radius: 5px; height: 10px; overflow: hidden; }
+      .costrow .fill { height: 100%; background: linear-gradient(90deg, var(--accent), #79c0ff); }
+      .costrow .label { color: var(--dim); overflow: hidden; text-overflow: ellipsis; }
+
+      .timeline { padding: 4px 16px 14px; max-height: 520px; overflow: auto; }
+      .tlrow { display: flex; gap: 10px; padding: 4px 0; font-size: 12.5px; }
+      .tlrow .t { color: var(--dim); font-family: ui-monospace, Menlo, monospace; }
+      .tlrow .p { color: var(--dim); min-width: 120px; }
+      .tlrow .l.err { color: var(--error); }
+
+      footer { color: var(--dim); font-size: 12px; margin-top: 26px; }
+      .empty { padding: 40px 16px; text-align: center; color: var(--dim); }
+      .pulse { animation: pulse 1.6s ease-in-out infinite; }
+      @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.45; } }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <h1><span class="dot">▶</span> agent-control-tower</h1>
+        <span class="sub" id="meta">connecting…</span>
+      </header>
+
+      <div class="chips" id="chips"></div>
+      <div class="bar" id="distbar"></div>
+
+      <div class="grid">
+        <div class="panel">
+          <h2>Agents</h2>
+          <div id="tablewrap"></div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:18px;">
+          <div class="panel">
+            <h2>Cost by agent</h2>
+            <div class="costbars" id="costbars"></div>
+          </div>
+          <div class="panel">
+            <h2>Recent activity</h2>
+            <div class="timeline" id="timeline"></div>
+          </div>
+        </div>
+      </div>
+
+      <footer>
+        Read-only · local-first · no telemetry · no outbound network. Reading
+        <span class="mono" id="rootpath"></span>. Auto-refreshes every 3s.
+      </footer>
+    </div>
+
+    <script>
+      const STATUSES = ['working', 'waiting', 'error', 'idle'];
+      const GLYPH = { working: '▶', waiting: '⏸', error: '✖', idle: '·' };
+      let sortKey = 'status';
+      let sortDir = 1;
+
+      const STATUS_RANK = { working: 0, waiting: 1, error: 2, idle: 3 };
+
+      function fmtDur(ms) {
+        if (!isFinite(ms) || ms < 0) return '—';
+        if (ms < 1000) return Math.round(ms) + 'ms';
+        const s = Math.floor(ms / 1000);
+        if (s < 60) return s + 's';
+        const m = Math.floor(s / 60);
+        if (m < 60) return m + 'm ' + (s % 60) + 's';
+        const h = Math.floor(m / 60);
+        return h + 'h ' + String(m % 60).padStart(2, '0') + 'm';
+      }
+      function fmtTok(n) {
+        if (!isFinite(n)) return '0';
+        if (n < 1000) return String(Math.round(n));
+        if (n < 1e6) return (n / 1e3).toFixed(1) + 'k';
+        return (n / 1e6).toFixed(2) + 'M';
+      }
+      function fmtUsd(n) {
+        if (!n) return '$0';
+        return n < 1 ? '$' + n.toFixed(4) : '$' + n.toFixed(2);
+      }
+      function fmtRel(ts, now) {
+        if (!ts) return '—';
+        const d = now - ts;
+        if (d < 1000) return 'now';
+        const s = Math.floor(d / 1000);
+        if (s < 60) return s + 's ago';
+        const m = Math.floor(s / 60);
+        if (m < 60) return m + 'm ago';
+        const h = Math.floor(m / 60);
+        if (h < 24) return h + 'h ago';
+        return Math.floor(h / 24) + 'd ago';
+      }
+      function esc(s) {
+        return String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+      }
+
+      function sortAgents(agents) {
+        const a = [...agents];
+        a.sort((x, y) => {
+          let v;
+          switch (sortKey) {
+            case 'duration': v = y.turnDurationMs - x.turnDurationMs; break;
+            case 'cost': v = (y.cost.usd) - (x.cost.usd); break;
+            case 'tokens': v = y.totalTokens - x.totalTokens; break;
+            case 'project': v = String(x.project || x.sessionId).localeCompare(String(y.project || y.sessionId)); break;
+            default: v = STATUS_RANK[x.status] - STATUS_RANK[y.status] || (y.lastActivityAt - x.lastActivityAt);
+          }
+          return v * (sortKey === 'project' ? sortDir : 1) * (sortKey === 'status' ? 1 : sortDir);
+        });
+        return a;
+      }
+
+      function renderTable(fleet, now) {
+        const cols = [
+          ['status', 'Status'], ['project', 'Project'], ['branch', 'Branch'], ['model', 'Model'],
+          ['tool', 'Tool'], ['duration', 'Turn'], ['tokens', 'Tokens'], ['cost', 'Cost'], ['last', 'Last'],
+        ];
+        if (fleet.agents.length === 0) {
+          return '<div class="empty">No agents found.<br/>Start a Claude Code session, or run the server with <span class="mono">--sample</span>.</div>';
+        }
+        const head = cols.map(([k, label]) =>
+          `<th data-k="${k}" class="${k === sortKey ? 'sorted' : ''}">${label}</th>`).join('');
+        const rows = sortAgents(fleet.agents).map((a) => {
+          const stale = a.status === 'working' && a.isStale ? ' <span class="stale" title="no recent activity">⚠</span>' : '';
+          return `<tr>
+            <td class="status-cell s-${a.status}"><span class="glyph">${GLYPH[a.status]}</span>${a.status}${stale}</td>
+            <td title="${esc(a.cwd || '')}">${esc(a.project || a.slug || a.sessionId)}</td>
+            <td class="mono">${esc(a.gitBranch || '—')}</td>
+            <td>${esc(a.model || '—')}</td>
+            <td class="tool">${esc(a.currentTool || '—')}</td>
+            <td class="num">${fmtDur(a.turnDurationMs)}</td>
+            <td class="num">${fmtTok(a.totalTokens)}</td>
+            <td class="num">${a.cost.estimated ? '~' : ''}${fmtUsd(a.cost.usd)}</td>
+            <td class="num">${fmtRel(a.lastActivityAt, now)}</td>
+          </tr>`;
+        }).join('');
+        return `<table><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table>`;
+      }
+
+      function renderChips(totals) {
+        document.getElementById('chips').innerHTML = STATUSES.map((s) =>
+          `<span class="chip"><span class="swatch bg-${s}"></span><b>${totals.byStatus[s]}</b> <span class="s-${s}">${s}</span></span>`
+        ).join('') +
+        `<span class="chip">Σ <b>${totals.agents}</b> agents</span>` +
+        `<span class="chip">${fmtTok(totals.totalTokens)} tokens</span>` +
+        `<span class="chip">${fmtUsd(totals.costUsd)} est.</span>`;
+      }
+
+      function renderDist(totals) {
+        const n = Math.max(1, totals.agents);
+        document.getElementById('distbar').innerHTML = STATUSES.map((s) => {
+          const w = (100 * totals.byStatus[s]) / n;
+          return w > 0 ? `<span class="bg-${s}" style="width:${w}%" title="${totals.byStatus[s]} ${s}"></span>` : '';
+        }).join('');
+      }
+
+      function renderCostBars(fleet) {
+        const top = [...fleet.agents].sort((a, b) => b.cost.usd - a.cost.usd).slice(0, 8);
+        const max = Math.max(1e-9, ...top.map((a) => a.cost.usd));
+        document.getElementById('costbars').innerHTML = top.length === 0 ? '<span class="sub">—</span>' :
+          top.map((a) => `
+            <div class="costrow">
+              <span class="label" title="${esc(a.project || a.sessionId)}">${esc(a.project || a.slug || a.sessionId)}</span>
+              <span class="track"><span class="fill" style="width:${(100 * a.cost.usd / max).toFixed(1)}%"></span></span>
+              <span class="num">${a.cost.estimated ? '~' : ''}${fmtUsd(a.cost.usd)}</span>
+            </div>`).join('');
+      }
+
+      function renderTimeline(tl, now) {
+        const rows = [...tl.entries].slice(-40).reverse();
+        document.getElementById('timeline').innerHTML = rows.length === 0 ? '<span class="sub">—</span>' :
+          rows.map((e) => {
+            const t = e.tsIso ? e.tsIso.slice(11, 19) : '--:--:--';
+            return `<div class="tlrow"><span class="t">${t}</span><span class="p">${esc(e.project || e.sessionId)}</span><span class="l ${e.isError ? 'err' : ''}">${esc(e.label)}</span></div>`;
+          }).join('');
+      }
+
+      async function refresh() {
+        try {
+          const [fleet, tl] = await Promise.all([
+            fetch('/api/fleet').then((r) => r.json()),
+            fetch('/api/timeline?limit=60').then((r) => r.json()),
+          ]);
+          const now = fleet.now;
+          document.getElementById('meta').textContent =
+            `${fleet.fileCount} session${fleet.fileCount === 1 ? '' : 's'}${fleet.sample ? ' · sample data' : ''}`;
+          document.getElementById('rootpath').textContent = fleet.root;
+          renderChips(fleet.totals);
+          renderDist(fleet.totals);
+          document.getElementById('tablewrap').innerHTML = renderTable(fleet, now);
+          renderCostBars(fleet);
+          renderTimeline(tl, now);
+          bindHeaders();
+        } catch (e) {
+          document.getElementById('meta').textContent = 'connection lost — retrying…';
+        }
+      }
+
+      function bindHeaders() {
+        document.querySelectorAll('th[data-k]').forEach((th) => {
+          th.onclick = () => {
+            const k = th.getAttribute('data-k');
+            if (k === sortKey) sortDir = -sortDir; else { sortKey = k; sortDir = 1; }
+            refresh();
+          };
+        });
+      }
+
+      refresh();
+      setInterval(refresh, 3000);
+    </script>
+  </body>
+</html>

@@ -167,31 +167,33 @@ Stack: TypeScript (strict) + Node 20+, pnpm, Vitest, ESLint. Ink for TUI; Fastif
 
 ## 9. Milestones & Definition of Done
 
-### M1 — Core (pure library) + fixtures + green CI  → tag `v0.1.0`
-- [ ] Repo created, MIT license, CI (install, typecheck, lint, test) **green** before features.
-- [ ] `src/core/types.ts`: normalized event model + `AgentSnapshot`/`FleetSnapshot`.
-- [ ] `parser.ts`: robust JSONL → events; tolerates malformed/unknown lines (tested).
-- [ ] `fsm.ts`: `deriveAgentState` implements §6; every row of the table has a fixture test.
-- [ ] `cost.ts` + `pricing.ts`: implements §7; tested incl. unknown-model fallback.
-- [ ] `timeline.ts`: merged, time-sorted cross-agent timeline (tested).
-- [ ] `fleet.ts`: aggregate many sessions → `FleetSnapshot` (tested).
-- [ ] `tests/fixtures/`: generated, realistic JSONL covering each state + a multi-agent fleet.
-- [ ] `src/core` coverage ≥ 90% lines. Full suite green locally and in CI.
+### M1 — Core (pure library) + fixtures + green CI  → tag `v0.1.0` ✅ shipped
+- [x] Repo created, MIT license, CI (install, typecheck, lint, test) **green** before features.
+- [x] `src/core/types.ts`: normalized event model + `AgentSnapshot`/`FleetSnapshot`.
+- [x] `parser.ts`: robust JSONL → events; tolerates malformed/unknown lines (tested).
+- [x] `fsm.ts`: `deriveAgentState` implements §6; every row of the table has a fixture test.
+- [x] `cost.ts` + `pricing.ts`: implements §7; tested incl. unknown-model fallback.
+- [x] `timeline.ts`: merged, time-sorted cross-agent timeline (tested).
+- [x] `fleet.ts`: aggregate many sessions → `FleetSnapshot` (tested).
+- [x] `tests/fixtures/`: generated, realistic JSONL covering each state + a multi-agent fleet.
+- [x] `src/core` coverage ≥ 90% lines. Full suite green locally and in CI.
 
-### M2 — Ink TUI  → tag `v0.2.0`
-- [ ] `src/sources`: read-only session discovery + debounced watcher (integration-tested vs fixtures).
-- [ ] Live board: one row per agent with status badge, current tool, turn duration, model, cost.
-- [ ] Auto-refresh on file change; manual `r` refresh; sort by status/duration/cost.
-- [ ] Detail view for a selected agent (recent events, token breakdown).
-- [ ] `kill` / `focus` keys are **stubbed** (emit intent line) — state is real.
-- [ ] Renders correctly against a fixture root in a headless snapshot test (ink-testing-library).
+### M2 — Ink TUI  → tag `v0.2.0` ✅ shipped
+- [x] `src/sources`: read-only session discovery + watcher (integration-tested vs fixtures).
+- [x] Live board: one row per agent with status badge, current tool, turn duration, model, cost.
+- [x] Auto-refresh on file change; manual `r` refresh; sort by status/duration/cost/project.
+- [x] Detail view for a selected agent (reason, token breakdown, subagents).
+- [x] `kill` / `focus` keys are **stubbed** (emit intent line) — state is real.
+- [x] Renders correctly against a fixture root in a headless snapshot test (ink-testing-library).
 
-### M3 — Web dashboard over HTTP API  → tag `v0.3.0`
-- [ ] Fastify server with documented JSON API: `/api/fleet`, `/api/agents/:id`, `/api/timeline`,
+### M3 — Web dashboard over HTTP API  → tag `v0.3.0` ✅ shipped
+- [x] Fastify server with documented JSON API: `/api/fleet`, `/api/agents/:id`, `/api/timeline`,
       `/api/health`. **Tests hit the API directly** (no browser) and assert the same core data.
-- [ ] Self-contained dashboard page: sortable agent table + timeline + cost summary (Chart.js).
-- [ ] `--sample` serves bundled fixtures so the page is alive with zero real agents.
-- [ ] No external CDN/network; assets served locally. Read-only.
+- [x] Self-contained dashboard page: sortable agent table + timeline + cost bars.
+      *(Decision: used inline CSS/SVG charts instead of Chart.js — keeps the page strictly
+      offline & zero-dependency, satisfying "no external CDN" more strictly.)*
+- [x] `--sample` serves bundled fixtures so the page is alive with zero real agents.
+- [x] No external CDN/network; assets served locally; binds to 127.0.0.1. Read-only.
 
 ### M4 — Launch polish  → tag `v1.0.0`
 - [ ] Excellent README: one-liner, animated demo placeholder + exact vhs/asciinema record steps,

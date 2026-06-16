@@ -3,10 +3,25 @@
 Living status log for `agent-control-tower`. Newest first. Kept current every slice.
 
 ## Now
-- **Milestone:** M2 — Ink TUI + read-only sources. **COMPLETE** → tagging v0.2.0.
-- **State:** Sources layer + live TUI board built and tested; the CLI runs against the
-  bundled sample fleet and against real `~/.claude` data (read-only) — it correctly
-  surfaced 258 real sessions including this one. 95 tests green.
+- **Milestone:** M3 — Web dashboard over HTTP API. **COMPLETE** → tagging v0.3.0.
+- **State:** Fastify JSON API + self-contained dashboard built and tested. API tested via
+  `inject`; the real listening server was started against the sample and curled end-to-end.
+  100 tests green. Next: M4 launch polish (README, demo, CONTRIBUTING, npx).
+
+## M3 — Done
+- ✅ Fastify server (`src/web/server.ts`) with documented JSON API: `/api/health`,
+  `/api/fleet`, `/api/timeline?limit=`, `/api/agents/:id`. Binds to `127.0.0.1` only.
+- ✅ `createServer()` returns an un-listened app so tests hit the API via `inject` and
+  assert the same core snapshot the TUI renders (6 specs).
+- ✅ Self-contained dashboard (`src/web/public/index.html`, inline CSS/JS, dark theme):
+  status chips + distribution bar, sortable agent table, cost-by-agent bars, live
+  timeline; auto-refreshes every 3s. **No external CDN / no network** — chose CSS/SVG
+  visuals over Chart.js to stay strictly offline & zero-dependency (documented deviation
+  from the PRD's "Chart.js if needed").
+- ✅ `--sample` serves the bundled fleet; build copies web assets into `dist` via
+  `scripts/copy-assets.mjs`. Verified the real server over HTTP (curl health/fleet/page).
+
+## M2 — Done
 
 ## M2 — Done
 - ✅ `src/sources` (read-only): recursive session discovery, transcript reader, fleet/

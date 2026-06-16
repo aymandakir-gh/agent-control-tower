@@ -25,4 +25,11 @@ export default tseslint.config(
       '@typescript-eslint/no-explicit-any': 'off',
     },
   },
+  {
+    // Plain Node scripts (build helpers) run in Node and use its globals.
+    files: ['scripts/**/*.{js,mjs}'],
+    languageOptions: {
+      globals: { console: 'readonly', process: 'readonly', URL: 'readonly' },
+    },
+  },
 );
