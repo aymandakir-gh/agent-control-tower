@@ -67,6 +67,39 @@ describe('web API (sample fleet)', () => {
     expect(res.body).toContain('agent-control-tower');
     expect(res.body).toContain('/api/fleet');
   });
+
+  it('GET /api/alerts surfaces alerts (error + waiting) with a summary', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/alerts' });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    // The sample fleet has one error agent and one waiting-for-input agent.
+    expect(body.summary.total).toBeGreaterThanOrEqual(2);
+    expect(body.alerts.some((a: { type: string }) => a.type === 'error')).toBe(true);
+    expect(body.alerts.some((a: { type: string }) => a.type === 'waiting')).toBe(true);
+    // most-urgent first
+    expect(body.alerts[0].severity).toBe('critical');
+  });
+
+  it('GET /api/fleet embeds the same alerts + summary', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/fleet' });
+    const body = res.json();
+    expect(body.alertSummary.total).toBe(body.alerts.length);
+    expect(body.alertSummary.critical).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('web API — configurable alert rules', () => {
+  it('honors injected alert rules (cost ceiling fires)', async () => {
+    const { resolveAlertRules } = await import('../../src/core/index.js');
+    const rooted = createServer({ sample: true, alertRules: resolveAlertRules({ costUsd: 0.01 }) });
+    try {
+      const res = await rooted.inject({ method: 'GET', url: '/api/alerts' });
+      const body = res.json();
+      expect(body.alerts.some((a: { type: string }) => a.type === 'cost')).toBe(true);
+    } finally {
+      await rooted.close();
+    }
+  });
 });
 
 describe('web API — explicit --root', () => {

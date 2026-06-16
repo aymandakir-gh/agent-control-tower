@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_PORT, parseArgs } from '../../src/cli/args.js';
+import { alertRulesFromArgs, DEFAULT_PORT, parseArgs } from '../../src/cli/args.js';
 
 describe('parseArgs', () => {
   it('defaults to the tui command', () => {
@@ -48,5 +48,29 @@ describe('parseArgs', () => {
     expect(parseArgs([]).source).toBeUndefined();
     expect(parseArgs(['--source', 'generic-jsonl']).source).toBe('generic-jsonl');
     expect(parseArgs(['scan', '--source=generic-jsonl']).source).toBe('generic-jsonl');
+  });
+
+  it('parses alert threshold flags in both forms', () => {
+    expect(parseArgs(['--alert-idle-min', '30']).alertIdleMin).toBe(30);
+    expect(parseArgs(['--alert-idle-min=15']).alertIdleMin).toBe(15);
+    expect(parseArgs(['--alert-cost', '2.5']).alertCost).toBe(2.5);
+    expect(parseArgs(['--alert-cost=10']).alertCost).toBe(10);
+    expect(parseArgs(['--alert-turn-min', '20']).alertTurnMin).toBe(20);
+    expect(parseArgs(['--alert-turn-min=45']).alertTurnMin).toBe(45);
+    expect(parseArgs(['--alert-idle-min', 'nope']).alertIdleMin).toBeUndefined();
+  });
+});
+
+describe('alertRulesFromArgs', () => {
+  it('returns undefined when no alert flags are set (use defaults downstream)', () => {
+    expect(alertRulesFromArgs(parseArgs([]))).toBeUndefined();
+  });
+
+  it('builds an enabled rule set from flags', () => {
+    const rules = alertRulesFromArgs(parseArgs(['--alert-idle-min', '5', '--alert-cost', '3', '--alert-turn-min', '20']));
+    expect(rules).toBeDefined();
+    expect(rules!.find((r) => r.type === 'idle')).toMatchObject({ enabled: true, minutes: 5 });
+    expect(rules!.find((r) => r.type === 'cost')).toMatchObject({ enabled: true, usd: 3 });
+    expect(rules!.find((r) => r.type === 'long-turn')?.minutes).toBe(20);
   });
 });

@@ -10,6 +10,21 @@ Living status log for `agent-control-tower`. Newest first. Kept current every sl
   / 100% funcs, typecheck + lint clean, `pnpm build` ok, CLI runs vs `--sample` and real
   `~/.claude` (357 sessions, read-only). PRD.md updated with M5–M10 + specs §12–§15.
 
+## M6 — Configurable alerting → v1.2.0 ✅
+- ✅ Pure `evaluateAlerts(fleet, rules, now)` (`src/core/alerts.ts`, 100% lines): rule types
+  `error` (critical), `waiting`-for-input (warn), `idle` > N min (info, opt-in), `long-turn`
+  > N min (warn, default 15), `cost` ≥ $X (warn, opt-in). `resolveAlertRules`, `sortAlerts`,
+  `summarizeAlerts` helpers. Added a clean `waitingForInput` boolean to the snapshot so the
+  waiting rule never relies on reason-string matching.
+- ✅ **100% unit-tested** (22 specs): every rule asserted to fire AND stay silent; threshold
+  edges, rounding, missing-threshold (never-fires) branches, default-rule path, sort/summary.
+- ✅ Surfaced in BOTH frontends: TUI alerts panel + per-row ▲ badge (`<Board/>`); web
+  `/api/alerts` + alerts embedded in `/api/fleet` + a dashboard alert banner. `scan` prints an
+  Alerts section (CI/cron-friendly).
+- ✅ Configurable via `--alert-idle-min`, `--alert-cost`, `--alert-turn-min`
+  (`alertRulesFromArgs`, threaded through scan/tui/web). Verified vs sample + real `~/.claude`.
+- ✅ `build && typecheck && lint && test` green (180 tests); `src/core` 99.77% lines. 1.1.0→1.2.0.
+
 ## M5 — Source-agnostic core → v1.1.0 ✅
 - ✅ `SourceAdapter` interface (`src/sources/adapter.ts`): `id`, `displayName`, `extension`,
   `defaultRoot()`, read-only `discover()`/`read()`, and a **pure** `parse()` (the conformance

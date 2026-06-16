@@ -14,6 +14,8 @@ import {
   statusGlyph,
   type AgentSnapshot,
   type AgentStatus,
+  type Alert,
+  type AlertSeverity,
 } from '../core/index.js';
 import type { FleetView } from '../sources/transcripts.js';
 
@@ -23,6 +25,24 @@ const STATUS_INK_COLOR: Record<AgentStatus, string> = {
   error: 'red',
   idle: 'gray',
 };
+
+const SEVERITY_INK_COLOR: Record<AlertSeverity, string> = {
+  critical: 'red',
+  warn: 'yellow',
+  info: 'blue',
+};
+
+const SEVERITY_RANK: Record<AlertSeverity, number> = { critical: 0, warn: 1, info: 2 };
+
+/** Map each agent session to its most-severe alert (for per-row badges). */
+function alertsBySession(alerts: Alert[]): Map<string, AlertSeverity> {
+  const m = new Map<string, AlertSeverity>();
+  for (const a of alerts) {
+    const cur = m.get(a.sessionId);
+    if (cur === undefined || SEVERITY_RANK[a.severity] < SEVERITY_RANK[cur]) m.set(a.sessionId, a.severity);
+  }
+  return m;
+}
 
 const STATUS_ORDER: AgentStatus[] = ['working', 'waiting', 'error', 'idle'];
 
@@ -57,10 +77,12 @@ function AgentRow({
   a,
   now,
   selected,
+  alert,
 }: {
   a: AgentSnapshot;
   now: number;
   selected: boolean;
+  alert?: AlertSeverity;
 }): React.ReactElement {
   const color = STATUS_INK_COLOR[a.status];
   const marker = selected ? '›' : ' ';
@@ -78,7 +100,36 @@ function AgentRow({
       <Text>{pad(formatDuration(a.turnDurationMs), COLS.turn)} </Text>
       <Text>{pad(formatTokensCompact(a.totalTokens), COLS.tokens)} </Text>
       <Text>{pad(cost, COLS.cost)} </Text>
-      <Text dimColor>{formatRelativeTime(a.lastActivityAt, now)}</Text>
+      <Text dimColor>{pad(formatRelativeTime(a.lastActivityAt, now), 8)}</Text>
+      {alert ? <Text color={SEVERITY_INK_COLOR[alert]}> ▲</Text> : null}
+    </Box>
+  );
+}
+
+function AlertsPanel({ alerts, summary }: { alerts: Alert[]; summary: FleetView['alertSummary'] }): React.ReactElement {
+  const counts = [
+    summary.critical > 0 ? { n: summary.critical, label: 'critical', sev: 'critical' as const } : null,
+    summary.warn > 0 ? { n: summary.warn, label: 'warn', sev: 'warn' as const } : null,
+    summary.info > 0 ? { n: summary.info, label: 'info', sev: 'info' as const } : null,
+  ].filter((x): x is { n: number; label: string; sev: AlertSeverity } => x !== null);
+  return (
+    <Box marginTop={1} flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={1}>
+      <Box>
+        <Text bold color="yellow">⚠ alerts </Text>
+        {counts.map((c, i) => (
+          <Text key={c.label} color={SEVERITY_INK_COLOR[c.sev]}>
+            {i > 0 ? ' · ' : ''}
+            {c.n} {c.label}
+          </Text>
+        ))}
+      </Box>
+      {alerts.slice(0, 6).map((al, i) => (
+        <Text key={`${al.sessionId}-${al.ruleId}-${i}`}>
+          <Text color={SEVERITY_INK_COLOR[al.severity]}>▲ </Text>
+          <Text bold>{pad(al.project ?? al.sessionId, COLS.project)} </Text>
+          <Text dimColor>{al.message}</Text>
+        </Text>
+      ))}
     </Box>
   );
 }
@@ -135,6 +186,7 @@ export function Board({
   const { fleet } = view;
   const agents = fleet.agents;
   const selected = agents[selectedIndex];
+  const alertSeverity = alertsBySession(view.alerts);
 
   return (
     <Box flexDirection="column">
@@ -165,11 +217,19 @@ export function Board({
           <>
             <HeaderCells />
             {agents.map((a, i) => (
-              <AgentRow key={a.sessionId} a={a} now={now} selected={i === selectedIndex} />
+              <AgentRow
+                key={a.sessionId}
+                a={a}
+                now={now}
+                selected={i === selectedIndex}
+                {...(alertSeverity.has(a.sessionId) ? { alert: alertSeverity.get(a.sessionId) } : {})}
+              />
             ))}
           </>
         )}
       </Box>
+
+      {view.alerts.length > 0 && <AlertsPanel alerts={view.alerts} summary={view.alertSummary} />}
 
       {agents.length > 0 && (
         <Box marginTop={1}>

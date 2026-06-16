@@ -83,6 +83,17 @@
       .tlrow .p { color: var(--dim); min-width: 120px; }
       .tlrow .l.err { color: var(--error); }
 
+      .alertbox { margin: 0 0 18px; }
+      .alerthdr { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--dim); margin: 2px 0 8px; }
+      .alerts { display: flex; flex-direction: column; gap: 6px; }
+      .alert {
+        display: flex; align-items: center; gap: 10px; padding: 7px 12px;
+        border-radius: 8px; border: 1px solid var(--border); background: var(--panel); font-size: 13px;
+      }
+      .alert .sev { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+      .alert .who { color: var(--dim); min-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .sev-critical { background: var(--error); } .sev-warn { background: var(--waiting); } .sev-info { background: var(--accent); }
+
       footer { color: var(--dim); font-size: 12px; margin-top: 26px; }
       .empty { padding: 40px 16px; text-align: center; color: var(--dim); }
       .pulse { animation: pulse 1.6s ease-in-out infinite; }
@@ -98,6 +109,7 @@
 
       <div class="chips" id="chips"></div>
       <div class="bar" id="distbar"></div>
+      <div class="alertbox" id="alertbox"></div>
 
       <div class="grid">
         <div class="panel">
@@ -238,6 +250,22 @@
             </div>`).join('');
       }
 
+      function renderAlerts(fleet) {
+        const el = document.getElementById('alertbox');
+        const alerts = fleet.alerts || [];
+        if (alerts.length === 0) { el.innerHTML = ''; return; }
+        const s = fleet.alertSummary || { critical: 0, warn: 0, info: 0 };
+        const parts = [];
+        if (s.critical) parts.push(`${s.critical} critical`);
+        if (s.warn) parts.push(`${s.warn} warn`);
+        if (s.info) parts.push(`${s.info} info`);
+        const hdr = `<div class="alerthdr">⚠ alerts — ${parts.join(' · ')}</div>`;
+        const rows = alerts.slice(0, 12).map((a) =>
+          `<div class="alert"><span class="sev sev-${a.severity}"></span><span class="who" title="${esc(a.project || a.sessionId)}">${esc(a.project || a.sessionId)}</span><span>${esc(a.message)}</span></div>`
+        ).join('');
+        el.innerHTML = hdr + '<div class="alerts">' + rows + '</div>';
+      }
+
       function renderTimeline(tl, now) {
         const rows = [...tl.entries].slice(-40).reverse();
         document.getElementById('timeline').innerHTML = rows.length === 0 ? '<span class="sub">—</span>' :
@@ -259,6 +287,7 @@
           document.getElementById('rootpath').textContent = fleet.root;
           renderChips(fleet.totals);
           renderDist(fleet.totals);
+          renderAlerts(fleet);
           document.getElementById('tablewrap').innerHTML = renderTable(fleet, now);
           renderCostBars(fleet);
           renderTimeline(tl, now);

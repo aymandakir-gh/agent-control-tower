@@ -13,7 +13,7 @@
  */
 
 import { PRODUCT_NAME, VERSION } from './core/index.js';
-import { parseArgs, DEFAULT_PORT, type CliOptions } from './cli/args.js';
+import { alertRulesFromArgs, parseArgs, DEFAULT_PORT, type CliOptions } from './cli/args.js';
 import { runScan } from './cli/scan.js';
 
 const HELP = `${PRODUCT_NAME} v${VERSION} — a local-first control tower for fleets of AI coding agents.
@@ -34,6 +34,9 @@ OPTIONS
   --source <id>  Source adapter: claude-code (default) | generic-jsonl
   --json         (scan) Emit JSON instead of a table
   --idle-ms <n>  Idle threshold in ms (default: 120000)
+  --alert-idle-min <n>   Alert when an agent is idle > n minutes
+  --alert-cost <usd>     Alert when an agent's est. cost ≥ $usd
+  --alert-turn-min <n>   Alert when a turn runs > n minutes (default 15)
   --port <n>     (web) Port to serve on (default: ${DEFAULT_PORT})
   --no-color     Disable ANSI colors
   -h, --help     Show help
@@ -73,10 +76,12 @@ async function main(): Promise<number> {
         return runScan(options);
       }
       const { renderTui } = await import('./tui/render.js');
+      const alertRules = alertRulesFromArgs(options);
       await renderTui({
         sample: options.sample,
         ...(options.root ? { root: options.root } : {}),
         ...(options.source !== undefined ? { source: options.source } : {}),
+        ...(alertRules ? { alertRules } : {}),
         ...(options.idleMs !== undefined
           ? { config: { idleMs: options.idleMs, interactiveTools: ['AskUserQuestion'] } }
           : {}),

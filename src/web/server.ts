@@ -13,15 +13,16 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Fastify, { type FastifyInstance } from 'fastify';
-import { PRODUCT_NAME, VERSION, type FsmConfig } from '../core/index.js';
+import { PRODUCT_NAME, VERSION, type AlertRule, type FsmConfig } from '../core/index.js';
 import { loadFleetView, type FleetView, type LoadOptions } from '../sources/index.js';
-import type { CliOptions } from '../cli/args.js';
+import { alertRulesFromArgs, type CliOptions } from '../cli/args.js';
 
 export interface WebServerOptions {
   sample?: boolean;
   root?: string;
   source?: string;
   idleMs?: number;
+  alertRules?: readonly AlertRule[];
   /** Injectable loader (tests). Defaults to the real read-only loader. */
   loader?: (opts: LoadOptions) => Promise<FleetView>;
 }
@@ -33,6 +34,7 @@ function loadOptionsFrom(opts: WebServerOptions): LoadOptions {
     sample: opts.sample ?? false,
     ...(opts.root ? { root: opts.root } : {}),
     ...(opts.source !== undefined ? { source: opts.source } : {}),
+    ...(opts.alertRules ? { alertRules: opts.alertRules } : {}),
     ...(config ? { config } : {}),
   };
 }
@@ -84,7 +86,14 @@ export function createServer(opts: WebServerOptions = {}): FastifyInstance {
       fileCount: v.fileCount,
       totals: v.fleet.totals,
       agents: v.fleet.agents,
+      alerts: v.alerts,
+      alertSummary: v.alertSummary,
     };
+  });
+
+  app.get('/api/alerts', async () => {
+    const v = await view();
+    return { now: v.now, summary: v.alertSummary, alerts: v.alerts };
   });
 
   app.get('/api/timeline', async (req) => {
@@ -120,10 +129,12 @@ export function createServer(opts: WebServerOptions = {}): FastifyInstance {
 
 /** Start the dashboard server (CLI). */
 export async function runWeb(options: CliOptions): Promise<number> {
+  const alertRules = alertRulesFromArgs(options);
   const app = createServer({
     sample: options.sample,
     ...(options.root ? { root: options.root } : {}),
     ...(options.source !== undefined ? { source: options.source } : {}),
+    ...(alertRules ? { alertRules } : {}),
     ...(options.idleMs !== undefined ? { idleMs: options.idleMs } : {}),
   });
   const port = options.port;

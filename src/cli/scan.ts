@@ -14,7 +14,7 @@ import {
 } from '../core/index.js';
 import { loadFleetView, type FleetView, type LoadOptions } from '../sources/transcripts.js';
 import { paint, STATUS_COLOR } from '../ui/ansi.js';
-import type { CliOptions } from './args.js';
+import { alertRulesFromArgs, type CliOptions } from './args.js';
 
 function truncate(s: string, n: number): string {
   if (s.length <= n) return s;
@@ -89,6 +89,22 @@ export function renderScanText(view: FleetView, color: boolean): string {
       `${formatTokensCompact(fleet.totals.totalTokens)} tokens  ${formatUsd(totalCost)}`,
   );
 
+  // Alerts (PRD §13).
+  if (view.alerts.length > 0) {
+    const s = view.alertSummary;
+    lines.push('');
+    const counts = [
+      s.critical > 0 ? paint(color, 'red', `${s.critical} critical`) : '',
+      s.warn > 0 ? paint(color, 'yellow', `${s.warn} warn`) : '',
+      s.info > 0 ? paint(color, 'dim', `${s.info} info`) : '',
+    ].filter(Boolean).join('  ');
+    lines.push(`${paint(color, 'bold', 'Alerts:')} ${counts}`);
+    for (const al of view.alerts.slice(0, 10)) {
+      const col = al.severity === 'critical' ? 'red' : al.severity === 'warn' ? 'yellow' : 'dim';
+      lines.push(`  ${paint(color, col, '●')} ${pad(truncate(al.project ?? al.sessionId, 16), 16)} ${al.message}`);
+    }
+  }
+
   // Recent activity tail.
   const tail = view.timeline.slice(-8);
   if (tail.length > 0) {
@@ -106,9 +122,11 @@ export function renderScanText(view: FleetView, color: boolean): string {
 
 /** Execute the scan command (does I/O + printing). Returns process exit code. */
 export async function runScan(options: CliOptions): Promise<number> {
+  const alertRules = alertRulesFromArgs(options);
   const loadOpts: LoadOptions = {
     sample: options.sample,
     ...(options.source !== undefined ? { source: options.source } : {}),
+    ...(alertRules ? { alertRules } : {}),
     ...(options.idleMs !== undefined
       ? { config: { idleMs: options.idleMs, interactiveTools: ['AskUserQuestion'] } }
       : {}),

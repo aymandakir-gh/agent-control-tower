@@ -186,6 +186,8 @@ export interface AgentSnapshot {
   reason: string;
   /** Name of the pending or most-recent tool, if any. */
   currentTool?: string;
+  /** True iff the agent is blocked on a human (interactive tool pending). */
+  waitingForInput: boolean;
   /** Epoch ms when the in-progress (or most recent) turn began. */
   turnStartedAt?: number;
   /** Elapsed ms for an active turn (now − turnStartedAt), or the recorded duration. */

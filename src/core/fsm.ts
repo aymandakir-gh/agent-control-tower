@@ -194,6 +194,7 @@ export function deriveAgentState(
     ...(model !== undefined ? { model } : {}),
     status,
     reason,
+    waitingForInput: interactivePending,
     ...(currentTool !== undefined ? { currentTool } : {}),
     ...(turnStartedAt > 0 ? { turnStartedAt } : {}),
     turnDurationMs,

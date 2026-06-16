@@ -2,6 +2,8 @@
  * Pure CLI argument parser. No I/O — takes argv tokens, returns a plain config.
  */
 
+import { resolveAlertRules, type AlertRule } from '../core/index.js';
+
 export type Command = 'tui' | 'web' | 'scan' | 'help' | 'version';
 
 export interface CliOptions {
@@ -12,6 +14,12 @@ export interface CliOptions {
   source?: string;
   json: boolean;
   idleMs?: number;
+  /** Enable the idle alert at N minutes (PRD §13). */
+  alertIdleMin?: number;
+  /** Enable the cost alert at $N. */
+  alertCost?: number;
+  /** Override the long-turn alert threshold (minutes). */
+  alertTurnMin?: number;
   port: number;
   noColor: boolean;
   /** Unknown flags, surfaced so the CLI can warn. */
@@ -67,6 +75,21 @@ export function parseArgs(argv: string[]): CliOptions {
         if (Number.isFinite(n) && n >= 0) opts.idleMs = n;
         break;
       }
+      case '--alert-idle-min': {
+        const n = Number(argv[++i]);
+        if (Number.isFinite(n) && n >= 0) opts.alertIdleMin = n;
+        break;
+      }
+      case '--alert-cost': {
+        const n = Number(argv[++i]);
+        if (Number.isFinite(n) && n >= 0) opts.alertCost = n;
+        break;
+      }
+      case '--alert-turn-min': {
+        const n = Number(argv[++i]);
+        if (Number.isFinite(n) && n >= 0) opts.alertTurnMin = n;
+        break;
+      }
       case '--port': {
         const n = Number(argv[++i]);
         if (Number.isInteger(n) && n > 0 && n < 65_536) opts.port = n;
@@ -83,6 +106,15 @@ export function parseArgs(argv: string[]): CliOptions {
         } else if (arg.startsWith('--idle-ms=')) {
           const n = Number(arg.slice('--idle-ms='.length));
           if (Number.isFinite(n) && n >= 0) opts.idleMs = n;
+        } else if (arg.startsWith('--alert-idle-min=')) {
+          const n = Number(arg.slice('--alert-idle-min='.length));
+          if (Number.isFinite(n) && n >= 0) opts.alertIdleMin = n;
+        } else if (arg.startsWith('--alert-cost=')) {
+          const n = Number(arg.slice('--alert-cost='.length));
+          if (Number.isFinite(n) && n >= 0) opts.alertCost = n;
+        } else if (arg.startsWith('--alert-turn-min=')) {
+          const n = Number(arg.slice('--alert-turn-min='.length));
+          if (Number.isFinite(n) && n >= 0) opts.alertTurnMin = n;
         } else if (!arg.startsWith('-') && !commandSet && (COMMANDS as string[]).includes(arg)) {
           opts.command = arg as Command;
           commandSet = true;
@@ -94,4 +126,19 @@ export function parseArgs(argv: string[]): CliOptions {
   }
 
   return opts;
+}
+
+/**
+ * Build a concrete alert rule set from CLI flags, or `undefined` to use the
+ * defaults (when no alert flag was passed). Pure.
+ */
+export function alertRulesFromArgs(opts: CliOptions): AlertRule[] | undefined {
+  if (opts.alertIdleMin === undefined && opts.alertCost === undefined && opts.alertTurnMin === undefined) {
+    return undefined;
+  }
+  return resolveAlertRules({
+    ...(opts.alertIdleMin !== undefined ? { idleMinutes: opts.alertIdleMin } : {}),
+    ...(opts.alertCost !== undefined ? { costUsd: opts.alertCost } : {}),
+    ...(opts.alertTurnMin !== undefined ? { turnMinutes: opts.alertTurnMin } : {}),
+  });
 }

@@ -35,4 +35,15 @@ describe('<Board/>', () => {
     );
     expect(lastFrame() ?? '').toContain('No agents found');
   });
+
+  it('renders an alerts panel for the sample fleet (error + waiting)', async () => {
+    const view = await loadFleetView({ sample: true });
+    const { lastFrame } = render(
+      <Board view={view} now={view.now} selectedIndex={0} sortKey="status" showDetail={false} />,
+    );
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('alerts');
+    expect(frame).toContain('critical');
+    expect(frame).toContain('waiting for input');
+  });
 });

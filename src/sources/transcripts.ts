@@ -14,6 +14,12 @@ import { fileURLToPath } from 'node:url';
 import {
   buildFleet,
   buildTimeline,
+  DEFAULT_ALERT_RULES,
+  evaluateAlerts,
+  summarizeAlerts,
+  type Alert,
+  type AlertRule,
+  type AlertSummary,
   type FleetSnapshot,
   type FsmConfig,
   type ParsedTranscript,
@@ -85,6 +91,8 @@ export interface LoadOptions {
   source?: string;
   config?: FsmConfig;
   pricing?: PricingTable;
+  /** Alert rules to evaluate. Defaults to DEFAULT_ALERT_RULES. */
+  alertRules?: readonly AlertRule[];
   /** Max timeline entries to return. */
   timelineLimit?: number;
 }
@@ -92,6 +100,9 @@ export interface LoadOptions {
 export interface FleetView {
   fleet: FleetSnapshot;
   timeline: TimelineEntry[];
+  /** Alerts fired by the active rule set (PRD §13), most-urgent first. */
+  alerts: Alert[];
+  alertSummary: AlertSummary;
   root: string;
   now: number;
   sample: boolean;
@@ -138,9 +149,12 @@ export async function loadFleetView(rootOrOptions: string | LoadOptions = {}, ma
   const timeline = buildTimeline(transcripts, {
     limit: options.timelineLimit ?? 200,
   });
+  const alerts = evaluateAlerts(fleet, options.alertRules ?? DEFAULT_ALERT_RULES, now);
   return {
     fleet,
     timeline,
+    alerts,
+    alertSummary: summarizeAlerts(alerts),
     root,
     now,
     sample: options.sample ?? false,
