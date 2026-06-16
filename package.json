@@ -1,6 +1,6 @@
 {
   "name": "agent-control-tower",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "A local-first control tower for fleets of AI coding agents. Observe & steer many parallel Claude Code agents from one screen.",
   "type": "module",
   "license": "MIT",
@@ -47,7 +47,9 @@
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",
     "dev": "tsx src/cli.ts",
-    "clean": "rm -rf dist coverage"
+    "clean": "rm -rf dist coverage",
+    "prepack": "pnpm build",
+    "prepublishOnly": "pnpm typecheck && pnpm lint && pnpm test && pnpm build"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",

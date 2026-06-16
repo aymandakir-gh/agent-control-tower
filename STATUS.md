@@ -3,10 +3,19 @@
 Living status log for `agent-control-tower`. Newest first. Kept current every slice.
 
 ## Now
-- **Milestone:** M3 — Web dashboard over HTTP API. **COMPLETE** → tagging v0.3.0.
-- **State:** Fastify JSON API + self-contained dashboard built and tested. API tested via
-  `inject`; the real listening server was started against the sample and curled end-to-end.
-  100 tests green. Next: M4 launch polish (README, demo, CONTRIBUTING, npx).
+- **Milestone:** M4 — Launch polish. **COMPLETE** → tagging v1.0.0 (launch).
+- **State:** All four milestones done. README, CONTRIBUTING, demo tooling, and GitHub
+  templates written. `npx`-equivalent verified from a packed tarball (bins + sample fixtures
+  resolve from a clean install). 100 tests green; CI green on Node 20 & 22.
+
+## M4 — Done
+- ✅ Excellent README: one-liner, embedded board demo, exact vhs/asciinema recording steps,
+  one-line `npx` install, "why this exists", privacy section, HTTP API table, roadmap.
+- ✅ Delightful empty state + `--sample` toggle in both frontends (TUI + web) — verified.
+- ✅ `npx agent-control-tower` works from a clean pack: `prepack` builds; `files` ships
+  `dist` + sample fixtures + README + LICENSE; installed `agent-control-tower`/`act` bins run.
+- ✅ CONTRIBUTING.md, issue templates (bug/feature), PR template, demo/ (vhs tape + README +
+  walkthrough.sh).
 
 ## M3 — Done
 - ✅ Fastify server (`src/web/server.ts`) with documented JSON API: `/api/health`,
