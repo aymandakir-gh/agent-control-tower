@@ -20,7 +20,7 @@ export default tseslint.config(
   },
   {
     // Tests and fixtures may be looser.
-    files: ['tests/**/*.ts', '**/*.test.ts'],
+    files: ['tests/**/*.{ts,tsx}', '**/*.test.{ts,tsx}'],
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
     },
