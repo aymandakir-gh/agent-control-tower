@@ -172,6 +172,8 @@ export interface BoardProps {
   showDetail: boolean;
   message?: string;
   paused?: boolean;
+  /** Whether real management actions are enabled (--allow-control). */
+  controlEnabled?: boolean;
 }
 
 export function Board({
@@ -182,6 +184,7 @@ export function Board({
   showDetail,
   message,
   paused,
+  controlEnabled,
 }: BoardProps): React.ReactElement {
   const { fleet } = view;
   const agents = fleet.agents;
@@ -251,8 +254,8 @@ export function Board({
 
       <Box marginTop={1}>
         <Text dimColor>
-          ↑/↓ select · enter detail · s sort · r refresh · p pause · k kill* · f focus* · q quit
-          {'   '}(* stubbed)
+          ↑/↓ select · enter detail · s sort · r refresh · p pause-view · f focus · z stop · x cont · q quit
+          {controlEnabled ? '   [control ON]' : '   (control off — pass --allow-control)'}
         </Text>
       </Box>
     </Box>

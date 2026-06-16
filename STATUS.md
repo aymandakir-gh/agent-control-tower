@@ -10,6 +10,24 @@ Living status log for `agent-control-tower`. Newest first. Kept current every sl
   / 100% funcs, typecheck + lint clean, `pnpm build` ok, CLI runs vs `--sample` and real
   `~/.claude` (357 sessions, read-only). PRD.md updated with M5–M10 + specs §12–§15.
 
+## M8 — Real management actions (focus/pause/resume) → v1.4.0 ✅
+- ✅ New `src/control/` layer. Pure `assessControl(target, action, policy)` gate refuses unless:
+  control opted-in, action known, target resolves to one valid pid, pid not protected
+  (self/parent/init via `defaultProtectedPids`). Injectable `Controller` interface.
+- ✅ `FakeController` (records calls, honors policy) + real `ProcessController` with **injectable**
+  `ProcessOps`: pause=SIGSTOP, resume=SIGCONT (reversible), focus=tmux pane switch
+  (`focusViaTmux`). `PsProcessLocator` resolves session→pid best-effort via `ps`+`lsof`
+  (read-only); pure `matchProcess`/`parsePs`; `NullProcessLocator` for the disabled default.
+- ✅ `createControlSetup(allow)` → inert (fake+null) when off, real pair when on. `executeControl`
+  ties locate→run. **Disabled by default**; TUI keys `f`/`z`/`x` (focus/stop/cont) wired with a
+  control-on/off footer hint; web `POST /api/agents/:id/control` registered ONLY when enabled
+  (404 otherwise); `/api/health.control` reports state.
+- ✅ Tested **both directions**: acts when allowed (fake + ProcessController via spy ops, TUI keypress,
+  web POST), refuses when unsafe (disabled, unknown action, unresolved pid, protected pid, signal
+  throws). Verified live: endpoint 404 by default; real path refused a sample agent — nothing signaled.
+- ✅ Read-only-on-`~/.claude` preserved (control touches processes/terminals only). 242 tests; core
+  99.8% lines (control layer thoroughly tested, outside the core gate by design). 1.3.0→1.4.0.
+
 ## M7 — Persistent history + session replay → v1.3.0 ✅
 - ✅ Pure `buildSessionReplay(parsed)` (`src/core/replay.ts`, 100% lines): re-derives a session's
   state-over-time by running the FSM at each meaningful event; returns frames (status/tool/turn/

@@ -21,6 +21,14 @@ import {
   type AlertRule,
   type FsmConfig,
 } from '../core/index.js';
+import {
+  createControlSetup,
+  executeControl,
+  targetFromAgent,
+  CONTROL_ACTIONS,
+  type ControlAction,
+  type ControlSetup,
+} from '../control/index.js';
 import { loadFleetView, type FleetView, type LoadOptions } from '../sources/index.js';
 import { alertRulesFromArgs, type CliOptions } from '../cli/args.js';
 
@@ -30,6 +38,10 @@ export interface WebServerOptions {
   source?: string;
   idleMs?: number;
   alertRules?: readonly AlertRule[];
+  /** Enable real management actions + the control endpoint (PRD §15). */
+  allowControl?: boolean;
+  /** Injectable control setup (tests). When provided, the control route is registered. */
+  control?: ControlSetup;
   /** Injectable loader (tests). Defaults to the real read-only loader. */
   loader?: (opts: LoadOptions) => Promise<FleetView>;
 }
@@ -63,6 +75,11 @@ export function createServer(opts: WebServerOptions = {}): FastifyInstance {
   const loadOpts = loadOptionsFrom(opts);
   const indexHtml = readIndexHtml();
 
+  // Control is disabled by default; the route is registered only when enabled
+  // (or when a control setup is injected for tests).
+  const control = opts.control ?? createControlSetup(opts.allowControl ?? false);
+  const controlRoutes = opts.allowControl === true || opts.control !== undefined;
+
   // root (when set) now travels inside loadOpts, honored by loadFleetView.
   const view = async (): Promise<FleetView> => load(loadOpts);
 
@@ -76,6 +93,7 @@ export function createServer(opts: WebServerOptions = {}): FastifyInstance {
       sample: v.sample,
       source: v.source,
       sourceName: v.sourceName,
+      control: control.enabled,
       now: v.now,
       fileCount: v.fileCount,
       agents: v.fleet.totals.agents,
@@ -146,6 +164,27 @@ export function createServer(opts: WebServerOptions = {}): FastifyInstance {
     return { now: v.now, bucketMs: bucketMs ?? 3_600_000, count: points.length, points };
   });
 
+  // Guarded management endpoint — registered ONLY when control is enabled.
+  if (controlRoutes) {
+    app.post('/api/agents/:id/control', async (req, reply) => {
+      const { id } = req.params as { id: string };
+      const body = (req.body ?? {}) as { action?: string };
+      const action = body.action;
+      if (!action || !(CONTROL_ACTIONS as readonly string[]).includes(action)) {
+        reply.code(400);
+        return { error: 'invalid or missing action', actions: CONTROL_ACTIONS };
+      }
+      const v = await view();
+      const agent = v.fleet.agents.find((a) => a.sessionId === id);
+      if (!agent) {
+        reply.code(404);
+        return { error: 'agent not found', id };
+      }
+      const result = await executeControl(control, targetFromAgent(agent), action as ControlAction);
+      return { now: v.now, result };
+    });
+  }
+
   app.get('/', async (_req, reply) => {
     reply.type('text/html');
     return indexHtml;
@@ -159,6 +198,7 @@ export async function runWeb(options: CliOptions): Promise<number> {
   const alertRules = alertRulesFromArgs(options);
   const app = createServer({
     sample: options.sample,
+    allowControl: options.allowControl,
     ...(options.root ? { root: options.root } : {}),
     ...(options.source !== undefined ? { source: options.source } : {}),
     ...(alertRules ? { alertRules } : {}),

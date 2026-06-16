@@ -41,6 +41,7 @@ OPTIONS
   --alert-turn-min <n>   Alert when a turn runs > n minutes (default 15)
   --record       (scan) Append a fleet history sample (PRD §14)
   --history-file <path>  Override the history file location
+  --allow-control  Enable real management actions: focus / pause / resume
   --port <n>     (web) Port to serve on (default: ${DEFAULT_PORT})
   --no-color     Disable ANSI colors
   -h, --help     Show help
@@ -91,6 +92,7 @@ async function main(): Promise<number> {
       const alertRules = alertRulesFromArgs(options);
       await renderTui({
         sample: options.sample,
+        allowControl: options.allowControl,
         ...(options.root ? { root: options.root } : {}),
         ...(options.source !== undefined ? { source: options.source } : {}),
         ...(alertRules ? { alertRules } : {}),

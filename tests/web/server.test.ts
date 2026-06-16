@@ -131,6 +131,58 @@ describe('web API — configurable alert rules', () => {
   });
 });
 
+describe('web API — management actions (PRD §15)', () => {
+  it('does NOT register the control endpoint by default', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/agents/a1111111-working-bash/control',
+      payload: { action: 'pause' },
+    });
+    expect(res.statusCode).toBe(404);
+    const health = (await app.inject({ method: 'GET', url: '/api/health' })).json();
+    expect(health.control).toBe(false);
+  });
+
+  it('acts when an enabled control setup is injected, and refuses unknown actions/agents', async () => {
+    const { FakeController } = await import('../../src/control/index.js');
+    const controller = new FakeController({ allow: true, protectedPids: [1] });
+    const control = { controller, locator: { locate: async () => 4242 }, enabled: true };
+    const srv = createServer({ sample: true, control });
+    try {
+      const ok = await srv.inject({ method: 'POST', url: '/api/agents/a1111111-working-bash/control', payload: { action: 'pause' } });
+      expect(ok.statusCode).toBe(200);
+      expect(ok.json().result.ok).toBe(true);
+      expect(ok.json().result.pid).toBe(4242);
+      expect(controller.calls).toHaveLength(1);
+
+      const bad = await srv.inject({ method: 'POST', url: '/api/agents/a1111111-working-bash/control', payload: { action: 'kill' } });
+      expect(bad.statusCode).toBe(400);
+
+      const missing = await srv.inject({ method: 'POST', url: '/api/agents/nope/control', payload: { action: 'pause' } });
+      expect(missing.statusCode).toBe(404);
+
+      expect((await srv.inject({ method: 'GET', url: '/api/health' })).json().control).toBe(true);
+    } finally {
+      await srv.close();
+    }
+  });
+
+  it('refuses (200, ok:false) when control is injected but disabled', async () => {
+    const { FakeController, NullProcessLocator } = await import('../../src/control/index.js');
+    const controller = new FakeController({ allow: false });
+    const control = { controller, locator: new NullProcessLocator(), enabled: false };
+    const srv = createServer({ sample: true, control });
+    try {
+      const res = await srv.inject({ method: 'POST', url: '/api/agents/a1111111-working-bash/control', payload: { action: 'pause' } });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().result.ok).toBe(false);
+      expect(res.json().result.reason).toContain('disabled');
+    } finally {
+      await srv.close();
+    }
+  });
+});
+
 describe('web API — explicit --root', () => {
   it('honors a root option instead of the default ~/.claude root', async () => {
     const rooted = createServer({ root: sampleRoot() });

@@ -8,6 +8,13 @@
 
 import { Box, Text, useApp, useInput } from 'ink';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  createControlSetup,
+  executeControl,
+  targetFromAgent,
+  type ControlAction,
+  type ControlSetup,
+} from '../control/index.js';
 import { loadFleetView, watchRoot, type FleetView, type LoadOptions } from '../sources/index.js';
 import { Board, type SortKey } from './Board.js';
 import { nextSort, sortAgentsBy } from './sort.js';
@@ -18,6 +25,10 @@ export interface AppProps {
   options: LoadOptions & { root?: string };
   /** Injectable for tests; defaults to the real read-only loader. */
   loader?: Loader;
+  /** Enable real management actions (focus/pause/resume). Off by default. */
+  allowControl?: boolean;
+  /** Injectable control setup (tests). Defaults to one built from allowControl. */
+  control?: ControlSetup;
   /** Clock tick (ms) for live durations. Default 1000. */
   tickMs?: number;
   /** Disable the filesystem watcher (tests). */
@@ -28,8 +39,9 @@ function applySort(view: FleetView, key: SortKey): FleetView {
   return { ...view, fleet: { ...view.fleet, agents: sortAgentsBy(view.fleet.agents, key) } };
 }
 
-export function App({ options, loader = loadFleetView, tickMs = 1_000, noWatch }: AppProps): React.ReactElement {
+export function App({ options, loader = loadFleetView, allowControl, control, tickMs = 1_000, noWatch }: AppProps): React.ReactElement {
   const { exit } = useApp();
+  const controlRef = useRef<ControlSetup>(control ?? createControlSetup(allowControl ?? false));
   const [view, setView] = useState<FleetView | null>(null);
   const [now, setNow] = useState<number>(() => Date.now());
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -118,12 +130,14 @@ export function App({ options, loader = loadFleetView, tickMs = 1_000, noWatch }
       return;
     }
     const selected = view?.fleet.agents[selectedIndex];
-    if (input === 'k' && selected) {
-      setMessage(`kill is stubbed — would signal session ${selected.sessionId} (${selected.slug ?? ''})`);
-      return;
-    }
-    if (input === 'f' && selected) {
-      setMessage(`focus is stubbed — would focus session ${selected.sessionId} in its terminal`);
+    const action: ControlAction | undefined =
+      input === 'f' ? 'focus' : input === 'z' ? 'pause' : input === 'x' ? 'resume' : undefined;
+    if (action && selected) {
+      const label = selected.project ?? selected.slug ?? selected.sessionId;
+      setMessage(`${action}: resolving ${label}…`);
+      void executeControl(controlRef.current, targetFromAgent(selected), action).then((r) => {
+        setMessage(`${r.ok ? '✓' : '✗'} ${action} ${label} — ${r.reason}`);
+      });
       return;
     }
   });
@@ -153,6 +167,7 @@ export function App({ options, loader = loadFleetView, tickMs = 1_000, noWatch }
       showDetail={showDetail}
       {...(message !== undefined ? { message } : {})}
       paused={paused}
+      controlEnabled={controlRef.current.enabled}
     />
   );
 }

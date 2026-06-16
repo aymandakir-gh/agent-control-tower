@@ -28,6 +28,8 @@ export interface CliOptions {
   alertTurnMin?: number;
   port: number;
   noColor: boolean;
+  /** Enable real management actions (focus/pause/resume) — PRD §15. Off by default. */
+  allowControl: boolean;
   /** Unknown flags, surfaced so the CLI can warn. */
   unknown: string[];
 }
@@ -45,6 +47,7 @@ export function parseArgs(argv: string[]): CliOptions {
     record: false,
     port: DEFAULT_PORT,
     noColor: false,
+    allowControl: false,
     unknown: [],
   };
   let commandSet = false;
@@ -63,6 +66,9 @@ export function parseArgs(argv: string[]): CliOptions {
         break;
       case '--record':
         opts.record = true;
+        break;
+      case '--allow-control':
+        opts.allowControl = true;
         break;
       case '--history-file':
         opts.historyFile = argv[++i];
