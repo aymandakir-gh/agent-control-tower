@@ -10,6 +10,20 @@ Living status log for `agent-control-tower`. Newest first. Kept current every sl
   / 100% funcs, typecheck + lint clean, `pnpm build` ok, CLI runs vs `--sample` and real
   `~/.claude` (357 sessions, read-only). PRD.md updated with M5–M10 + specs §12–§15.
 
+## M9 — Web dashboard upgrade → v1.5.0 ✅
+- ✅ Rewrote `src/web/public/index.html` (self-contained, offline, inline CSS+SVG, no CDN):
+  configurable **live auto-refresh** (2/3/5/10s or paused) with a visible countdown + manual
+  refresh; client-side **filtering** (clickable status chips + free-text search over
+  project/branch/model/tool) with a match counter and clear button.
+- ✅ **Per-agent drill-down** drawer (click any row or alert): reason, model, branch, cwd, turn,
+  token breakdown, cost, this agent's alerts, **state transitions** + **session timeline**
+  (fetched from `/api/agents/:id/replay`). Esc / backdrop / × to close.
+- ✅ **Cost-over-time** SVG area chart from `/api/trend`; per-row alert badges; source + control
+  tags in the header. New `/api/sources` endpoint lists adapters + the active source.
+- ✅ Verified vs sample + real `~/.claude` (read-only): 0 external resource refs (offline),
+  26 KB single page; trend over 359 real sessions; sources/replay/health endpoints. Binds
+  `127.0.0.1`. 243 tests; core 99.8% lines. 1.4.0→1.5.0.
+
 ## M8 — Real management actions (focus/pause/resume) → v1.4.0 ✅
 - ✅ New `src/control/` layer. Pure `assessControl(target, action, policy)` gate refuses unless:
   control opted-in, action known, target resolves to one valid pid, pid not protected

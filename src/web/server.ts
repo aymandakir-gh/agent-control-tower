@@ -29,7 +29,7 @@ import {
   type ControlAction,
   type ControlSetup,
 } from '../control/index.js';
-import { loadFleetView, type FleetView, type LoadOptions } from '../sources/index.js';
+import { ADAPTERS, loadFleetView, type FleetView, type LoadOptions } from '../sources/index.js';
 import { alertRulesFromArgs, type CliOptions } from '../cli/args.js';
 
 export interface WebServerOptions {
@@ -154,6 +154,18 @@ export function createServer(opts: WebServerOptions = {}): FastifyInstance {
       return { error: 'session not found', id };
     }
     return { now: v.now, replay: buildSessionReplay(parsed) };
+  });
+
+  app.get('/api/sources', async () => {
+    const v = await view();
+    return {
+      active: v.source,
+      sources: Object.values(ADAPTERS).map((a) => ({
+        id: a.id,
+        displayName: a.displayName,
+        defaultRoot: a.defaultRoot(),
+      })),
+    };
   });
 
   app.get('/api/trend', async (req) => {

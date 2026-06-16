@@ -89,12 +89,29 @@ describe('web API (sample fleet)', () => {
     expect(res.json().bucketMs).toBe(60_000);
   });
 
-  it('GET / serves the self-contained dashboard', async () => {
+  it('GET / serves the self-contained dashboard with the upgraded features', async () => {
     const res = await app.inject({ method: 'GET', url: '/' });
     expect(res.statusCode).toBe(200);
     expect(res.headers['content-type']).toContain('text/html');
     expect(res.body).toContain('agent-control-tower');
     expect(res.body).toContain('/api/fleet');
+    // M9: live refresh control, filtering, drill-down, cost trend — all inline.
+    expect(res.body).toContain('/api/trend');
+    expect(res.body).toContain('/api/agents/');
+    expect(res.body).toContain('renderTrend');
+    expect(res.body).toContain('openDrawer');
+    expect(res.body).toContain('statusFilter');
+    // Offline guarantee: no external resource references.
+    expect(res.body).not.toMatch(/https?:\/\/(?!127\.0\.0\.1)/);
+  });
+
+  it('GET /api/sources lists adapters and the active source', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/sources' });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.active).toBe('claude-code');
+    expect(body.sources.map((s: { id: string }) => s.id).sort()).toEqual(['claude-code', 'generic-jsonl']);
+    expect(body.sources.find((s: { id: string }) => s.id === 'generic-jsonl').displayName).toBe('Generic JSONL / hook');
   });
 
   it('GET /api/alerts surfaces alerts (error + waiting) with a summary', async () => {
