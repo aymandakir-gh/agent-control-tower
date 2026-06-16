@@ -3,12 +3,21 @@
 Living status log for `agent-control-tower`. Newest first. Kept current every slice.
 
 ## Now
-- **Milestone:** Shipped v0.1.0–v1.0.1. **Starting the v2.0.0 program** (M5→M10, one tag per
-  milestone): source-agnostic core → alerting → history/replay → real management actions →
-  web dashboard upgrade → adversarial review → `v2.0.0`.
-- **State:** Baseline re-verified green before any v2 work — 107 tests, `src/core` 99.68% lines
-  / 100% funcs, typecheck + lint clean, `pnpm build` ok, CLI runs vs `--sample` and real
-  `~/.claude` (357 sessions, read-only). PRD.md updated with M5–M10 + specs §12–§15.
+- **Milestone:** 🛰️ **v2.0.0 SHIPPED.** The full v2 program (M5→M10) is complete; the v1.x
+  observer is now a control tower. Released through tags v1.1.0 → v2.0.0 (one per milestone),
+  **CI green at every tag** (verified v1.1.0…v2.0.0 all `success`).
+- **State:** 254 tests passing; `src/core` 99.8% lines (every core file 100% lines); typecheck +
+  lint clean; `pnpm build` ok; `npx` verified from a packed tarball. Verified vs `--sample` and
+  real `~/.claude` (462 sessions, **read-only**) across scan/tui/web/replay/history.
+- **All eight Definition-of-Done criteria met:** (1) real safety-gated management actions, both
+  directions tested; (2) source-agnostic core + 2nd adapter + conformance; (3) history + replay
+  from stored data; (4) configurable alerting in TUI + web, 100% unit-tested; (5) upgraded
+  offline web dashboard; (6) ≥180 tests + core ≥95% lines, reviewer-confirmed no padding;
+  (7) docs + demo + tarball verified, tagged v1.1.0→v2.0.0; (8) multi-agent adversarial review,
+  all real findings fixed + regression-tested, declines recorded.
+- **Invariants held throughout:** read-only on `~/.claude`, web binds `127.0.0.1`, no telemetry,
+  no outbound network; management acts on processes/terminals only; history writes only to an
+  app state dir.
 
 ## M9 — Web dashboard upgrade → v1.5.0 ✅
 - ✅ Rewrote `src/web/public/index.html` (self-contained, offline, inline CSS+SVG, no CDN):
