@@ -4,7 +4,7 @@
 
 import { resolveAlertRules, type AlertRule } from '../core/index.js';
 
-export type Command = 'tui' | 'web' | 'scan' | 'help' | 'version';
+export type Command = 'tui' | 'web' | 'scan' | 'replay' | 'history' | 'help' | 'version';
 
 export interface CliOptions {
   command: Command;
@@ -13,6 +13,12 @@ export interface CliOptions {
   /** Source adapter id (PRD §12), e.g. "claude-code" | "generic-jsonl". */
   source?: string;
   json: boolean;
+  /** Positional argument (e.g. the session id/path for `replay`). */
+  target?: string;
+  /** Record a fleet history sample to the history file (PRD §14). */
+  record: boolean;
+  /** Override the history file location. */
+  historyFile?: string;
   idleMs?: number;
   /** Enable the idle alert at N minutes (PRD §13). */
   alertIdleMin?: number;
@@ -26,7 +32,7 @@ export interface CliOptions {
   unknown: string[];
 }
 
-const COMMANDS: Command[] = ['tui', 'web', 'scan', 'help', 'version'];
+const COMMANDS: Command[] = ['tui', 'web', 'scan', 'replay', 'history', 'help', 'version'];
 
 export const DEFAULT_PORT = 4517;
 
@@ -36,6 +42,7 @@ export function parseArgs(argv: string[]): CliOptions {
     command: 'tui',
     sample: false,
     json: false,
+    record: false,
     port: DEFAULT_PORT,
     noColor: false,
     unknown: [],
@@ -53,6 +60,12 @@ export function parseArgs(argv: string[]): CliOptions {
         break;
       case '--no-color':
         opts.noColor = true;
+        break;
+      case '--record':
+        opts.record = true;
+        break;
+      case '--history-file':
+        opts.historyFile = argv[++i];
         break;
       case '-h':
       case '--help':
@@ -100,6 +113,8 @@ export function parseArgs(argv: string[]): CliOptions {
           opts.root = arg.slice('--root='.length);
         } else if (arg.startsWith('--source=')) {
           opts.source = arg.slice('--source='.length);
+        } else if (arg.startsWith('--history-file=')) {
+          opts.historyFile = arg.slice('--history-file='.length);
         } else if (arg.startsWith('--port=')) {
           const n = Number(arg.slice('--port='.length));
           if (Number.isInteger(n) && n > 0 && n < 65_536) opts.port = n;
@@ -115,9 +130,14 @@ export function parseArgs(argv: string[]): CliOptions {
         } else if (arg.startsWith('--alert-turn-min=')) {
           const n = Number(arg.slice('--alert-turn-min='.length));
           if (Number.isFinite(n) && n >= 0) opts.alertTurnMin = n;
-        } else if (!arg.startsWith('-') && !commandSet && (COMMANDS as string[]).includes(arg)) {
-          opts.command = arg as Command;
-          commandSet = true;
+        } else if (!arg.startsWith('-')) {
+          if (!commandSet && (COMMANDS as string[]).includes(arg)) {
+            opts.command = arg as Command;
+            commandSet = true;
+          } else if (opts.target === undefined) {
+            // First bare non-command arg is a positional target (e.g. replay <id>).
+            opts.target = arg;
+          }
         } else if (arg.startsWith('-')) {
           opts.unknown.push(arg);
         }

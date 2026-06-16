@@ -95,6 +95,9 @@ export interface LoadOptions {
   alertRules?: readonly AlertRule[];
   /** Max timeline entries to return. */
   timelineLimit?: number;
+  /** Keep the parsed transcripts on the view (for trend/replay). Off by default
+   *  so `scan --json` and the API stay compact. */
+  includeTranscripts?: boolean;
 }
 
 export interface FleetView {
@@ -111,6 +114,8 @@ export interface FleetView {
   source: string;
   /** Human-readable adapter name. */
   sourceName: string;
+  /** Parsed transcripts — present only when `includeTranscripts` was requested. */
+  transcripts?: ParsedTranscript[];
 }
 
 /**
@@ -161,5 +166,6 @@ export async function loadFleetView(rootOrOptions: string | LoadOptions = {}, ma
     fileCount: transcripts.length,
     source: adapter.id,
     sourceName: adapter.displayName,
+    ...(options.includeTranscripts ? { transcripts } : {}),
   };
 }

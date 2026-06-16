@@ -12,6 +12,8 @@ export * from './pricing.js';
 export * from './cost.js';
 export * from './fsm.js';
 export * from './alerts.js';
+export * from './replay.js';
+export * from './trend.js';
 export * from './timeline.js';
 export * from './fleet.js';
 export * from './format.js';

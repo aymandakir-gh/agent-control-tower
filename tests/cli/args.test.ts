@@ -59,6 +59,19 @@ describe('parseArgs', () => {
     expect(parseArgs(['--alert-turn-min=45']).alertTurnMin).toBe(45);
     expect(parseArgs(['--alert-idle-min', 'nope']).alertIdleMin).toBeUndefined();
   });
+
+  it('parses replay/history commands, a positional target, and history flags', () => {
+    const r = parseArgs(['replay', 'sess-123', '--json']);
+    expect(r.command).toBe('replay');
+    expect(r.target).toBe('sess-123');
+    expect(r.json).toBe(true);
+
+    expect(parseArgs(['history']).command).toBe('history');
+    expect(parseArgs(['scan', '--record']).record).toBe(true);
+    expect(parseArgs(['--history-file', '/tmp/h.jsonl']).historyFile).toBe('/tmp/h.jsonl');
+    expect(parseArgs(['--history-file=/tmp/h2.jsonl']).historyFile).toBe('/tmp/h2.jsonl');
+    expect(parseArgs([]).record).toBe(false);
+  });
 });
 
 describe('alertRulesFromArgs', () => {

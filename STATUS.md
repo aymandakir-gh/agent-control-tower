@@ -10,6 +10,22 @@ Living status log for `agent-control-tower`. Newest first. Kept current every sl
   / 100% funcs, typecheck + lint clean, `pnpm build` ok, CLI runs vs `--sample` and real
   `~/.claude` (357 sessions, read-only). PRD.md updated with M5–M10 + specs §12–§15.
 
+## M7 — Persistent history + session replay → v1.3.0 ✅
+- ✅ Pure `buildSessionReplay(parsed)` (`src/core/replay.ts`, 100% lines): re-derives a session's
+  state-over-time by running the FSM at each meaningful event; returns frames (status/tool/turn/
+  cost), the session timeline, duration, final status, totals. `maxFrames` even-sampling for huge
+  sessions; exported `eventLabel`. Re-renders history from stored data, no live process.
+- ✅ Pure `buildCostTrend(transcripts, {bucketMs})` (`src/core/trend.ts`, 100% lines): time-bucketed
+  cumulative cost/tokens across the fleet from transcript timestamps + usage.
+- ✅ Opt-in history recorder (`src/history/store.ts`): appends fleet samples to an app **state**
+  dir (`$XDG_STATE_HOME` / `~/.local/state/agent-control-tower/`), **never** `~/.claude`.
+  `recordSample`/`readHistory`/`sampleFromView`/`recordFleetSample`; temp-dir tested.
+- ✅ CLI: `replay <sessionId|path.jsonl>` (text/--json), `history` (reads recorded samples),
+  `scan --record [--history-file]`. Web: `/api/agents/:id/replay`, `/api/trend?bucketMs=`
+  (FleetView gains opt-in `includeTranscripts`, set by the server).
+- ✅ Verified vs sample + real `~/.claude` (read-only): replayed a real 170-frame session;
+  recorded/read history in a temp file; trend + replay endpoints over HTTP. 209 tests; core 99.8%.
+
 ## M6 — Configurable alerting → v1.2.0 ✅
 - ✅ Pure `evaluateAlerts(fleet, rules, now)` (`src/core/alerts.ts`, 100% lines): rule types
   `error` (critical), `waiting`-for-input (warn), `idle` > N min (info, opt-in), `long-turn`

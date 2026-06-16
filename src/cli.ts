@@ -25,6 +25,8 @@ COMMANDS
   tui            Live terminal board of all agents (default)
   scan           Print a one-shot fleet snapshot and exit
   web            Serve the local web dashboard
+  replay <id>    Re-render a past session's timeline + state-over-time
+  history        Show recorded fleet-history samples (see --record)
   help           Show this help
   version        Print version
 
@@ -37,6 +39,8 @@ OPTIONS
   --alert-idle-min <n>   Alert when an agent is idle > n minutes
   --alert-cost <usd>     Alert when an agent's est. cost ≥ $usd
   --alert-turn-min <n>   Alert when a turn runs > n minutes (default 15)
+  --record       (scan) Append a fleet history sample (PRD §14)
+  --history-file <path>  Override the history file location
   --port <n>     (web) Port to serve on (default: ${DEFAULT_PORT})
   --no-color     Disable ANSI colors
   -h, --help     Show help
@@ -63,6 +67,14 @@ async function main(): Promise<number> {
       return 0;
     case 'scan':
       return runScan(options);
+    case 'replay': {
+      const { runReplay } = await import('./cli/replay.js');
+      return runReplay(options);
+    }
+    case 'history': {
+      const { runHistory } = await import('./cli/history.js');
+      return runHistory(options);
+    }
     case 'web': {
       const { runWeb } = await import('./web/server.js');
       return runWeb(options);

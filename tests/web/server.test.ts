@@ -60,6 +60,35 @@ describe('web API (sample fleet)', () => {
     expect(miss.json().error).toMatch(/not found/);
   });
 
+  it('GET /api/agents/:id/replay reconstructs a session, 404 when unknown', async () => {
+    const ok = await app.inject({ method: 'GET', url: '/api/agents/a1111111-working-bash/replay' });
+    expect(ok.statusCode).toBe(200);
+    const replay = ok.json().replay;
+    expect(replay.sessionId).toBe('a1111111-working-bash');
+    expect(replay.frames.length).toBeGreaterThan(0);
+    expect(replay.timeline.length).toBeGreaterThan(0);
+
+    const miss = await app.inject({ method: 'GET', url: '/api/agents/nope/replay' });
+    expect(miss.statusCode).toBe(404);
+  });
+
+  it('GET /api/trend returns a cumulative cost series', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/trend' });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.bucketMs).toBe(3_600_000);
+    expect(Array.isArray(body.points)).toBe(true);
+    expect(body.count).toBe(body.points.length);
+    if (body.points.length > 0) {
+      expect(body.points[0]).toHaveProperty('cumulativeUsd');
+    }
+  });
+
+  it('GET /api/trend?bucketMs honors a custom bucket width', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/trend?bucketMs=60000' });
+    expect(res.json().bucketMs).toBe(60_000);
+  });
+
   it('GET / serves the self-contained dashboard', async () => {
     const res = await app.inject({ method: 'GET', url: '/' });
     expect(res.statusCode).toBe(200);

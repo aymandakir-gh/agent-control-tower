@@ -135,6 +135,20 @@ export async function runScan(options: CliOptions): Promise<number> {
     ? await loadFleetView(options.root, loadOpts)
     : await loadFleetView(loadOpts);
 
+  // Opt-in: append a fleet history sample (PRD §14). Writes only to the app
+  // state dir, never under the scanned root. Never fatal to the scan.
+  if (options.record) {
+    try {
+      const { recordFleetSample } = await import('../history/store.js');
+      const sample = await recordFleetSample(view, options.historyFile);
+      if (!options.json) {
+        process.stderr.write(`recorded history sample (${sample.agents} agents, ${sample.alerts} alerts).\n`);
+      }
+    } catch (err) {
+      process.stderr.write(`history: could not record sample: ${err instanceof Error ? err.message : String(err)}\n`);
+    }
+  }
+
   if (options.json) {
     process.stdout.write(JSON.stringify(view, null, 2) + '\n');
     return 0;

@@ -13,7 +13,14 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Fastify, { type FastifyInstance } from 'fastify';
-import { PRODUCT_NAME, VERSION, type AlertRule, type FsmConfig } from '../core/index.js';
+import {
+  buildCostTrend,
+  buildSessionReplay,
+  PRODUCT_NAME,
+  VERSION,
+  type AlertRule,
+  type FsmConfig,
+} from '../core/index.js';
 import { loadFleetView, type FleetView, type LoadOptions } from '../sources/index.js';
 import { alertRulesFromArgs, type CliOptions } from '../cli/args.js';
 
@@ -32,6 +39,7 @@ function loadOptionsFrom(opts: WebServerOptions): LoadOptions {
     opts.idleMs !== undefined ? { idleMs: opts.idleMs, interactiveTools: ['AskUserQuestion'] } : undefined;
   return {
     sample: opts.sample ?? false,
+    includeTranscripts: true, // needed for /api/trend and /api/agents/:id/replay
     ...(opts.root ? { root: opts.root } : {}),
     ...(opts.source !== undefined ? { source: opts.source } : {}),
     ...(opts.alertRules ? { alertRules: opts.alertRules } : {}),
@@ -117,6 +125,25 @@ export function createServer(opts: WebServerOptions = {}): FastifyInstance {
       return { error: 'agent not found', id };
     }
     return { now: v.now, agent };
+  });
+
+  app.get('/api/agents/:id/replay', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const v = await view();
+    const parsed = (v.transcripts ?? []).find((t) => (t.sessionId ?? '') === id);
+    if (!parsed) {
+      reply.code(404);
+      return { error: 'session not found', id };
+    }
+    return { now: v.now, replay: buildSessionReplay(parsed) };
+  });
+
+  app.get('/api/trend', async (req) => {
+    const v = await view();
+    const q = req.query as { bucketMs?: string };
+    const bucketMs = q.bucketMs !== undefined && Number.isFinite(Number(q.bucketMs)) ? Number(q.bucketMs) : undefined;
+    const points = buildCostTrend(v.transcripts ?? [], bucketMs !== undefined ? { bucketMs } : {});
+    return { now: v.now, bucketMs: bucketMs ?? 3_600_000, count: points.length, points };
   });
 
   app.get('/', async (_req, reply) => {
