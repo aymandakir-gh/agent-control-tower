@@ -10,6 +10,24 @@ Living status log for `agent-control-tower`. Newest first. Kept current every sl
   / 100% funcs, typecheck + lint clean, `pnpm build` ok, CLI runs vs `--sample` and real
   `~/.claude` (357 sessions, read-only). PRD.md updated with M5–M10 + specs §12–§15.
 
+## M5 — Source-agnostic core → v1.1.0 ✅
+- ✅ `SourceAdapter` interface (`src/sources/adapter.ts`): `id`, `displayName`, `extension`,
+  `defaultRoot()`, read-only `discover()`/`read()`, and a **pure** `parse()` (the conformance
+  contract). Two adapters: `claude-code` (reference) + `generic-jsonl` (framework-neutral hook).
+- ✅ Pure `parseGenericTranscript` (`src/core/generic.ts`, 100% lines) maps a documented JSONL
+  schema (`kind: prompt|assistant|tool_result|system|turn_duration`) into the SAME normalized
+  events, so FSM/cost/timeline are unchanged. Robust by the same contract as the Claude parser.
+- ✅ Extracted read-only fs primitives to `src/sources/fs.ts` (no import cycle); `transcripts.ts`
+  re-exports old symbols for back-compat. `loadFleetView`/`scanRoot` are adapter-aware;
+  `--source <id>` selects the adapter across scan/tui/web; sample mode pins Claude Code.
+- ✅ **Fixture-backed conformance suite** (`tests/sources/conformance.ts`): 7 canonical scenarios
+  (working ×2 / waiting / error / idle / cost) authored in BOTH dialects, asserted against ONE
+  shared expectation set — both adapters pass (14 specs). Plus generic-parser unit tests (16) and
+  adapter registry + temp-dir discover/read integration (8).
+- ✅ Verified: `build && typecheck && lint && test` green (147 tests); CLI run against a real
+  generic temp dir AND real `~/.claude` (359 sessions, read-only). `src/core` 99.74% lines.
+- ✅ version 1.0.1→1.1.0 (+ a package.json↔version.ts sync regression test).
+
 ## v2.0.0 — plan & decisions
 - **Tag map:** v1.1.0 = M5 adapters · v1.2.0 = M6 alerting · v1.3.0 = M7 history/replay ·
   v1.4.0 = M8 control · v1.5.0 = M9 web upgrade · v2.0.0 = M10 review + launch.

@@ -43,4 +43,10 @@ describe('parseArgs', () => {
     expect(parseArgs(['--root', 'scan']).command).toBe('tui');
     expect(parseArgs(['--root', 'scan']).root).toBe('scan');
   });
+
+  it('parses --source in both forms (defaults undefined → claude-code)', () => {
+    expect(parseArgs([]).source).toBeUndefined();
+    expect(parseArgs(['--source', 'generic-jsonl']).source).toBe('generic-jsonl');
+    expect(parseArgs(['scan', '--source=generic-jsonl']).source).toBe('generic-jsonl');
+  });
 });

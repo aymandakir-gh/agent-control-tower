@@ -1,28 +1,46 @@
 /**
- * Source layer: discover and read Claude Code transcripts from disk.
+ * Source layer: discover and read agent transcripts from disk, then build the
+ * fleet + timeline view the frontends render.
  *
- * THIS IS THE ONLY PART OF THE APP THAT TOUCHES THE FILESYSTEM, AND IT IS
- * STRICTLY READ-ONLY. It never writes, moves, or deletes anything under the
- * scanned root (PRD §4 non-goals, §11). It opens files only with readers.
+ * THIS LAYER IS STRICTLY READ-ONLY on the scanned root. It never writes, moves,
+ * or deletes anything there (PRD §4 non-goals, §11). Concrete on-disk dialects
+ * are handled by pluggable {@link SourceAdapter}s (PRD §12); this module wires a
+ * selected adapter to the pure core.
  */
 
-import { readdir, readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { dirname, extname, join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  basename,
   buildFleet,
   buildTimeline,
-  parseTranscript,
   type FleetSnapshot,
   type FsmConfig,
   type ParsedTranscript,
   type PricingTable,
   type TimelineEntry,
 } from '../core/index.js';
+import {
+  claudeCodeAdapter,
+  getAdapter,
+  type SourceAdapter,
+} from './adapter.js';
 
-/** Default location of Claude Code session transcripts. */
+// Re-exported for back-compat with existing importers (watcher, tests).
+export { findSessionFiles } from './fs.js';
+export type { SessionFileRef } from './fs.js';
+export {
+  claudeCodeAdapter,
+  genericJsonlAdapter,
+  getAdapter,
+  isKnownSource,
+  listSourceIds,
+  ADAPTERS,
+  DEFAULT_SOURCE_ID,
+  type SourceAdapter,
+} from './adapter.js';
+
+/** Default location of Claude Code session transcripts (the reference source). */
 export function defaultRoot(): string {
   return join(homedir(), '.claude', 'projects');
 }
@@ -34,64 +52,15 @@ export function sampleRoot(): string {
   return join(here, '..', '..', 'tests', 'fixtures', 'sample');
 }
 
-export interface SessionFileRef {
-  path: string;
-  sessionId: string;
-  projectDir: string;
-  mtimeMs: number;
-  size: number;
+/** Read and parse a single Claude Code transcript file (read-only). */
+export function readTranscript(path: string): Promise<ParsedTranscript> {
+  return claudeCodeAdapter.read({ path, sessionId: '', projectDir: dirname(path), mtimeMs: 0, size: 0 });
 }
 
-/** Recursively find `*.jsonl` transcript files under `root` (read-only). */
-export async function findSessionFiles(root: string): Promise<SessionFileRef[]> {
-  const out: SessionFileRef[] = [];
-
-  async function walk(dir: string): Promise<void> {
-    // Read entries; unreadable dirs (permissions, races) are skipped, never fatal.
-    const entries = await readdir(dir, { withFileTypes: true }).catch(() => null);
-    if (!entries) return;
-    for (const entry of entries) {
-      const full = join(dir, entry.name);
-      if (entry.isDirectory()) {
-        await walk(full);
-      } else if (entry.isFile() && extname(entry.name) === '.jsonl') {
-        try {
-          const s = await stat(full);
-          out.push({
-            path: full,
-            sessionId: entry.name.slice(0, -'.jsonl'.length),
-            projectDir: dir,
-            mtimeMs: s.mtimeMs,
-            size: s.size,
-          });
-        } catch {
-          // file vanished between readdir and stat — skip
-        }
-      }
-    }
-  }
-
-  await walk(root);
-  return out;
-}
-
-/** Read and parse a single transcript file (read-only). */
-export async function readTranscript(path: string): Promise<ParsedTranscript> {
-  const text = await readFile(path, 'utf8');
-  const parsed = parseTranscript(text);
-  // Backfill sessionId from the filename when records omit it. Use a
-  // separator-agnostic basename so this is correct on Windows paths too.
-  if (!parsed.sessionId) {
-    const name = basename(path).replace(/\.jsonl$/, '');
-    return { ...parsed, sessionId: name };
-  }
-  return parsed;
-}
-
-/** Discover and parse every transcript under `root`. */
-export async function scanRoot(root: string): Promise<ParsedTranscript[]> {
-  const refs = await findSessionFiles(root);
-  const parsed = await Promise.all(refs.map((r) => readTranscript(r.path).catch(() => null)));
+/** Discover and parse every transcript under `root` using `adapter` (read-only). */
+export async function scanRoot(root: string, adapter: SourceAdapter = claudeCodeAdapter): Promise<ParsedTranscript[]> {
+  const refs = await adapter.discover(root);
+  const parsed = await Promise.all(refs.map((r) => adapter.read(r).catch(() => null)));
   return parsed.filter((p): p is ParsedTranscript => p !== null);
 }
 
@@ -112,6 +81,8 @@ export interface LoadOptions {
   sample?: boolean;
   /** Explicit transcript root. Overrides the default; ignored in sample mode. */
   root?: string;
+  /** Source adapter id (PRD §12). Defaults to Claude Code. Ignored in sample mode. */
+  source?: string;
   config?: FsmConfig;
   pricing?: PricingTable;
   /** Max timeline entries to return. */
@@ -125,6 +96,10 @@ export interface FleetView {
   now: number;
   sample: boolean;
   fileCount: number;
+  /** Id of the source adapter that produced this view. */
+  source: string;
+  /** Human-readable adapter name. */
+  sourceName: string;
 }
 
 /**
@@ -143,15 +118,17 @@ export function resolveNow(transcripts: ParsedTranscript[], opts: LoadOptions, w
 /** Top-level: scan a root and produce a fleet + timeline view for the frontends. */
 export async function loadFleetView(rootOrOptions: string | LoadOptions = {}, maybeOptions: LoadOptions = {}): Promise<FleetView> {
   const options: LoadOptions = typeof rootOrOptions === 'string' ? maybeOptions : rootOrOptions;
-  // Root precedence: explicit positional arg → options.root → sample/default.
+  // Sample fixtures are Claude-format; the sample fleet always uses that adapter.
+  const adapter = options.sample ? claudeCodeAdapter : getAdapter(options.source);
+  // Root precedence: explicit positional arg → options.root → sample/adapter default.
   const root =
     typeof rootOrOptions === 'string'
       ? rootOrOptions
       : options.sample
         ? sampleRoot()
-        : (options.root ?? defaultRoot());
+        : (options.root ?? adapter.defaultRoot());
 
-  const transcripts = await scanRoot(root);
+  const transcripts = await scanRoot(root, adapter);
   const now = resolveNow(transcripts, options, Date.now());
   const deriveOpts = {
     ...(options.config ? { config: options.config } : {}),
@@ -161,5 +138,14 @@ export async function loadFleetView(rootOrOptions: string | LoadOptions = {}, ma
   const timeline = buildTimeline(transcripts, {
     limit: options.timelineLimit ?? 200,
   });
-  return { fleet, timeline, root, now, sample: options.sample ?? false, fileCount: transcripts.length };
+  return {
+    fleet,
+    timeline,
+    root,
+    now,
+    sample: options.sample ?? false,
+    fileCount: transcripts.length,
+    source: adapter.id,
+    sourceName: adapter.displayName,
+  };
 }

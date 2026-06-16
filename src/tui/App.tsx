@@ -8,7 +8,7 @@
 
 import { Box, Text, useApp, useInput } from 'ink';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { defaultRoot, loadFleetView, watchRoot, type FleetView, type LoadOptions } from '../sources/index.js';
+import { loadFleetView, watchRoot, type FleetView, type LoadOptions } from '../sources/index.js';
 import { Board, type SortKey } from './Board.js';
 import { nextSort, sortAgentsBy } from './sort.js';
 
@@ -68,15 +68,17 @@ export function App({ options, loader = loadFleetView, tickMs = 1_000, noWatch }
     return () => clearInterval(id);
   }, [options.sample, tickMs]);
 
-  // Watch for transcript changes → reload (live mode only).
+  // Watch for transcript changes → reload (live mode only). We watch the
+  // resolved root from the loaded view so the correct source's directory is
+  // observed (e.g. a custom --root or a non-Claude --source default).
+  const watchTarget = view?.root;
   useEffect(() => {
-    if (noWatch || options.sample) return;
-    const watchTarget = options.root ?? defaultRoot();
+    if (noWatch || options.sample || !watchTarget) return;
     const w = watchRoot(watchTarget, () => {
       if (!pausedRef.current) void refresh();
     });
     return () => w.stop();
-  }, [noWatch, options.sample, options.root, refresh]);
+  }, [noWatch, options.sample, watchTarget, refresh]);
 
   // Re-sort in place when the sort key changes.
   useEffect(() => {

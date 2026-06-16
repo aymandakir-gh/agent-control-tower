@@ -7,6 +7,7 @@
 
 export * from './types.js';
 export * from './parser.js';
+export * from './generic.js';
 export * from './pricing.js';
 export * from './cost.js';
 export * from './fsm.js';

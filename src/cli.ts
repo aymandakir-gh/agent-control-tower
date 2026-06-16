@@ -30,7 +30,8 @@ COMMANDS
 
 OPTIONS
   --sample       Use the bundled sample fleet (no real data needed)
-  --root <dir>   Transcript root (default: ~/.claude/projects)
+  --root <dir>   Transcript root (default: per-source, e.g. ~/.claude/projects)
+  --source <id>  Source adapter: claude-code (default) | generic-jsonl
   --json         (scan) Emit JSON instead of a table
   --idle-ms <n>  Idle threshold in ms (default: 120000)
   --port <n>     (web) Port to serve on (default: ${DEFAULT_PORT})
@@ -75,6 +76,7 @@ async function main(): Promise<number> {
       await renderTui({
         sample: options.sample,
         ...(options.root ? { root: options.root } : {}),
+        ...(options.source !== undefined ? { source: options.source } : {}),
         ...(options.idleMs !== undefined
           ? { config: { idleMs: options.idleMs, interactiveTools: ['AskUserQuestion'] } }
           : {}),

@@ -8,6 +8,8 @@ export interface CliOptions {
   command: Command;
   sample: boolean;
   root?: string;
+  /** Source adapter id (PRD §12), e.g. "claude-code" | "generic-jsonl". */
+  source?: string;
   json: boolean;
   idleMs?: number;
   port: number;
@@ -57,6 +59,9 @@ export function parseArgs(argv: string[]): CliOptions {
       case '--root':
         opts.root = argv[++i];
         break;
+      case '--source':
+        opts.source = argv[++i];
+        break;
       case '--idle-ms': {
         const n = Number(argv[++i]);
         if (Number.isFinite(n) && n >= 0) opts.idleMs = n;
@@ -70,6 +75,8 @@ export function parseArgs(argv: string[]): CliOptions {
       default:
         if (arg.startsWith('--root=')) {
           opts.root = arg.slice('--root='.length);
+        } else if (arg.startsWith('--source=')) {
+          opts.source = arg.slice('--source='.length);
         } else if (arg.startsWith('--port=')) {
           const n = Number(arg.slice('--port='.length));
           if (Number.isInteger(n) && n > 0 && n < 65_536) opts.port = n;

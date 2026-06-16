@@ -34,7 +34,9 @@ export function renderScanText(view: FleetView, color: boolean): string {
 
   const title = paint(color, 'bold', 'agent-control-tower');
   const where = view.sample ? paint(color, 'cyan', '(sample data)') : paint(color, 'dim', view.root);
-  lines.push(`${title}  ${fleet.totals.agents} agent${fleet.totals.agents === 1 ? '' : 's'}  ${where}`);
+  // Show the source only when it isn't the default Claude Code adapter.
+  const src = view.source !== 'claude-code' ? '  ' + paint(color, 'blue', `[${view.sourceName}]`) : '';
+  lines.push(`${title}  ${fleet.totals.agents} agent${fleet.totals.agents === 1 ? '' : 's'}  ${where}${src}`);
 
   // Status summary.
   const summary = STATUS_ORDER.map((s) => {
@@ -106,6 +108,7 @@ export function renderScanText(view: FleetView, color: boolean): string {
 export async function runScan(options: CliOptions): Promise<number> {
   const loadOpts: LoadOptions = {
     sample: options.sample,
+    ...(options.source !== undefined ? { source: options.source } : {}),
     ...(options.idleMs !== undefined
       ? { config: { idleMs: options.idleMs, interactiveTools: ['AskUserQuestion'] } }
       : {}),

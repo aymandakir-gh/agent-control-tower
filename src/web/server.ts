@@ -20,6 +20,7 @@ import type { CliOptions } from '../cli/args.js';
 export interface WebServerOptions {
   sample?: boolean;
   root?: string;
+  source?: string;
   idleMs?: number;
   /** Injectable loader (tests). Defaults to the real read-only loader. */
   loader?: (opts: LoadOptions) => Promise<FleetView>;
@@ -31,6 +32,7 @@ function loadOptionsFrom(opts: WebServerOptions): LoadOptions {
   return {
     sample: opts.sample ?? false,
     ...(opts.root ? { root: opts.root } : {}),
+    ...(opts.source !== undefined ? { source: opts.source } : {}),
     ...(config ? { config } : {}),
   };
 }
@@ -62,6 +64,8 @@ export function createServer(opts: WebServerOptions = {}): FastifyInstance {
       version: VERSION,
       root: v.root,
       sample: v.sample,
+      source: v.source,
+      sourceName: v.sourceName,
       now: v.now,
       fileCount: v.fileCount,
       agents: v.fleet.totals.agents,
@@ -75,6 +79,8 @@ export function createServer(opts: WebServerOptions = {}): FastifyInstance {
       now: v.now,
       root: v.root,
       sample: v.sample,
+      source: v.source,
+      sourceName: v.sourceName,
       fileCount: v.fileCount,
       totals: v.fleet.totals,
       agents: v.fleet.agents,
@@ -117,6 +123,7 @@ export async function runWeb(options: CliOptions): Promise<number> {
   const app = createServer({
     sample: options.sample,
     ...(options.root ? { root: options.root } : {}),
+    ...(options.source !== undefined ? { source: options.source } : {}),
     ...(options.idleMs !== undefined ? { idleMs: options.idleMs } : {}),
   });
   const port = options.port;
