@@ -72,6 +72,12 @@ describe('parseArgs', () => {
     expect(parseArgs(['--history-file=/tmp/h2.jsonl']).historyFile).toBe('/tmp/h2.jsonl');
     expect(parseArgs([]).record).toBe(false);
   });
+
+  it('parses --allow-control and defaults it to false (the safety linchpin)', () => {
+    expect(parseArgs([]).allowControl).toBe(false);
+    expect(parseArgs(['--allow-control']).allowControl).toBe(true);
+    expect(parseArgs(['web', '--allow-control']).allowControl).toBe(true);
+  });
 });
 
 describe('alertRulesFromArgs', () => {

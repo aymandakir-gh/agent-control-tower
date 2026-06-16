@@ -171,7 +171,10 @@ export function createServer(opts: WebServerOptions = {}): FastifyInstance {
   app.get('/api/trend', async (req) => {
     const v = await view();
     const q = req.query as { bucketMs?: string };
-    const bucketMs = q.bucketMs !== undefined && Number.isFinite(Number(q.bucketMs)) ? Number(q.bucketMs) : undefined;
+    const n = Number(q.bucketMs);
+    // Only a positive finite width is honored; anything else falls back to the
+    // hourly default for BOTH the bucketing and the echoed value (kept in sync).
+    const bucketMs = q.bucketMs !== undefined && Number.isFinite(n) && n > 0 ? n : undefined;
     const points = buildCostTrend(v.transcripts ?? [], bucketMs !== undefined ? { bucketMs } : {});
     return { now: v.now, bucketMs: bucketMs ?? 3_600_000, count: points.length, points };
   });

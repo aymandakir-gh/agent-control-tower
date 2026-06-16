@@ -9,7 +9,7 @@
 
 import { appendFile, mkdir, readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import type { AgentStatus } from '../core/index.js';
 import type { FleetView } from '../sources/index.js';
 
@@ -46,14 +46,39 @@ export function sampleFromView(view: FleetView): HistorySample {
   };
 }
 
+/** True iff `path` resolves to `root` itself or a descendant of it. Pure. */
+export function isUnderRoot(path: string, root: string): boolean {
+  const rel = relative(resolve(root), resolve(path));
+  // '' → the root itself; a '..' prefix → outside; absolute → a different root.
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
+}
+
+/**
+ * Guard the read-only invariant: the history file must NEVER live under the
+ * scanned transcript root. Throws (callers treat it as non-fatal) when it would.
+ */
+export function assertHistoryPathSafe(path: string, scanRoot: string): void {
+  if (isUnderRoot(path, scanRoot)) {
+    throw new Error(
+      `refusing to write history under the scanned root (${scanRoot}); ` +
+        `pick a --history-file outside it (default: ${defaultHistoryPath()})`,
+    );
+  }
+}
+
 /** Append a sample to the history file (creating the directory if needed). */
 export async function recordSample(path: string, sample: HistorySample): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
   await appendFile(path, JSON.stringify(sample) + '\n', 'utf8');
 }
 
-/** Convenience: derive a sample from a view and append it. Returns the sample. */
+/**
+ * Convenience: derive a sample from a view and append it. Returns the sample.
+ * Refuses (throws) if the target path would land under the scanned root, so the
+ * read-only-on-`~/.claude` promise holds even with a hostile `--history-file`.
+ */
 export async function recordFleetSample(view: FleetView, path: string = defaultHistoryPath()): Promise<HistorySample> {
+  assertHistoryPathSafe(path, view.root);
   const sample = sampleFromView(view);
   await recordSample(path, sample);
   return sample;

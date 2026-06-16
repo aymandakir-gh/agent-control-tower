@@ -91,6 +91,31 @@ Living status log for `agent-control-tower`. Newest first. Kept current every sl
   generic temp dir AND real `~/.claude` (359 sessions, read-only). `src/core` 99.74% lines.
 - ✅ version 1.0.1→1.1.0 (+ a package.json↔version.ts sync regression test).
 
+## M10 — Adversarial review + v2.0.0 launch → v2.0.0 ✅
+- ✅ Ran a **16-agent adversarial review** Workflow (6 dimension reviewers → per-finding skeptic
+  verifiers) over the full `v1.0.1..HEAD` diff: 10 findings, **8 confirmed real**, 2 refuted.
+- ✅ Fixed all 8 confirmed (each with a regression test):
+  1. `buildSessionReplay({maxFrames:1})` div-by-zero → NaN index → crash → guarded
+     (maxFrames<1 → [], ===1 → last frame).
+  2. History writer could write **under the scanned root** via `--history-file` → added
+     `isUnderRoot`/`assertHistoryPathSafe`; `recordFleetSample` now refuses (non-fatal).
+  3. Locator's single-candidate fallback could resolve an **unrelated** process when no cwd
+     matched → cwd is now a **required** disambiguator (no fallback).
+  4. `looksLikeAgent` matched non-agents (`vim claude-notes.md`, `Claude.app`, `tail`…) →
+     tightened (excludes viewers/desktop-app; exported for reuse).
+  5. Resolved pid signaled without re-validation (TOCTOU) → `ProcessController` now re-confirms
+     the pid is still an agent (`verifyAgent`/`isAgentPid`) before SIGSTOP/SIGCONT.
+  6. Self-exclusion test passed for the wrong reason → rewritten to make the guard the deciding
+     factor (self-proc as unique cwd match → still refused).
+  7. `--allow-control` had **zero** parser coverage → added (default false / flag true).
+  8. `/api/trend` echoed a `bucketMs` disagreeing with bucketing for non-positive widths →
+     now only positive-finite is honored; echo matches the bucket used.
+- ⚖️ Declined 2 (recorded): (a) "TUI watcher never starts if initial load throws" — refuted: the
+  real loader can't throw and the `r` retry re-arms the watcher; (b) "PsProcessLocator integration
+  test is a tautology" — refuted: it's an intentionally-tolerant host-dependent no-throw smoke test.
+- ✅ README/CONTRIBUTING/demo refreshed; `npx` verified from a packed tarball; 254 tests; core
+  99.8% lines (every core file 100% lines); CI green. Bump 1.5.0→2.0.0.
+
 ## v2.0.0 — plan & decisions
 - **Tag map:** v1.1.0 = M5 adapters · v1.2.0 = M6 alerting · v1.3.0 = M7 history/replay ·
   v1.4.0 = M8 control · v1.5.0 = M9 web upgrade · v2.0.0 = M10 review + launch.

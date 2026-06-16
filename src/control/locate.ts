@@ -20,23 +20,34 @@ export interface ProcInfo {
   cwd?: string;
 }
 
-/** Looks like an agent process we might control (Claude Code CLI / similar). */
-function looksLikeAgent(command: string): boolean {
+/** First tokens that mean "a viewer/editor opening a claude-named file", not an agent. */
+const VIEWERS = /^(vim|nvim|vi|emacs|nano|less|more|tail|cat|head|grep|rg|ssh|man|bat|code|git)$/i;
+
+/**
+ * Looks like an agent process we might control (Claude Code CLI / similar).
+ * Deliberately conservative: excludes ourselves, the Claude **desktop** app, and
+ * editors/pagers that merely happen to have "claude" in their arguments — better
+ * to refuse than to signal the wrong process.
+ */
+export function looksLikeAgent(command: string): boolean {
   if (/agent-control-tower/i.test(command)) return false; // never target ourselves
+  if (/Claude\.app/i.test(command)) return false; // the desktop app, not the CLI
+  const exe = (command.trim().split(/\s+/)[0] ?? '').replace(/.*[/\\]/, '');
+  if (VIEWERS.test(exe)) return false; // e.g. `vim claude-notes.md`, `tail -f claude.log`
   return /\bclaude\b/i.test(command);
 }
 
 /**
  * Pure: pick the unique pid for a target from process candidates.
- * Filters to agent-like processes, then narrows by cwd when known. Returns a
- * pid only if exactly one candidate remains.
+ * Filters to agent-like processes; when a cwd is known it is a REQUIRED
+ * disambiguator (never falls back to an unrelated process). Returns a pid only
+ * if exactly one candidate remains — ambiguity/no-match resolves to undefined.
  */
 export function matchProcess(candidates: ProcInfo[], target: ControlTarget): number | undefined {
   let pool = candidates.filter((c) => looksLikeAgent(c.command));
   if (target.cwd !== undefined) {
-    const byCwd = pool.filter((c) => c.cwd !== undefined && c.cwd === target.cwd);
-    // Only narrow when at least one has a known, matching cwd; otherwise keep pool.
-    if (byCwd.length > 0) pool = byCwd;
+    // cwd must match: do not signal a process that isn't demonstrably this session's.
+    pool = pool.filter((c) => c.cwd !== undefined && c.cwd === target.cwd);
   }
   return pool.length === 1 ? pool[0].pid : undefined;
 }
@@ -64,7 +75,7 @@ export class PsProcessLocator implements ProcessLocator {
     } catch {
       return undefined; // ps unavailable — cannot resolve
     }
-    const agentish = candidates.filter((c) => /\bclaude\b/i.test(c.command));
+    const agentish = candidates.filter((c) => looksLikeAgent(c.command));
     // Enrich with cwd (via lsof) only for the narrowed agent set, and only when
     // we have a target cwd to compare against (keeps it cheap + read-only).
     if (target.cwd !== undefined) {

@@ -3,14 +3,16 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  assertHistoryPathSafe,
   defaultHistoryPath,
+  isUnderRoot,
   readHistory,
   recordFleetSample,
   recordSample,
   sampleFromView,
   type HistorySample,
 } from '../../src/history/store.js';
-import { loadFleetView } from '../../src/sources/index.js';
+import { loadFleetView, sampleRoot } from '../../src/sources/index.js';
 
 let dir: string;
 beforeEach(async () => {
@@ -70,6 +72,30 @@ describe('history store', () => {
     const read = await readHistory(path);
     expect(read).toHaveLength(1);
     expect(read[0].agents).toBe(sample.agents);
+  });
+});
+
+describe('read-only invariant — history never lands under the scanned root', () => {
+  it('isUnderRoot detects descendants, the root itself, and rejects outsiders', () => {
+    expect(isUnderRoot('/a/b/c/h.jsonl', '/a/b')).toBe(true);
+    expect(isUnderRoot('/a/b', '/a/b')).toBe(true);
+    expect(isUnderRoot('/a/sibling/h.jsonl', '/a/b')).toBe(false);
+    expect(isUnderRoot('/x/y/h.jsonl', '/a/b')).toBe(false);
+  });
+
+  it('assertHistoryPathSafe throws for a path inside the scan root', () => {
+    expect(() => assertHistoryPathSafe('/root/projects/x.jsonl', '/root/projects')).toThrow(/refusing to write history/);
+    expect(() => assertHistoryPathSafe('/elsewhere/h.jsonl', '/root/projects')).not.toThrow();
+  });
+
+  it('recordFleetSample refuses to write under the scanned root, but writes outside it', async () => {
+    const view = await loadFleetView({ sample: true }); // view.root === sampleRoot()
+    const underRoot = join(sampleRoot(), 'history.jsonl');
+    await expect(recordFleetSample(view, underRoot)).rejects.toThrow(/refusing to write history/);
+
+    const safe = join(dir, 'ok.jsonl');
+    await expect(recordFleetSample(view, safe)).resolves.toBeTruthy();
+    expect(await readHistory(safe)).toHaveLength(1);
   });
 });
 

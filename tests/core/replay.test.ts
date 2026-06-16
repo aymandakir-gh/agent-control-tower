@@ -59,6 +59,19 @@ describe('buildSessionReplay', () => {
     expect(capped.frames[capped.frames.length - 1].seq).toBe(full.frames[full.frames.length - 1].seq);
   });
 
+  it('does not crash for degenerate maxFrames (<= 1) — keeps the final frame', () => {
+    // Regression: maxFrames=1 used to divide by zero → NaN index → throw.
+    const b = new TranscriptBuilder();
+    for (let i = 0; i < 6; i++) b.prompt(`q${i}`).assistant({ text: `a${i}`, stopReason: 'end_turn' });
+    const parsed = parse(b);
+    const one = buildSessionReplay(parsed, { maxFrames: 1 });
+    expect(one.frames).toHaveLength(1);
+    const full = buildSessionReplay(parsed);
+    expect(one.frames[0].seq).toBe(full.frames[full.frames.length - 1].seq);
+    expect(() => buildSessionReplay(parsed, { maxFrames: 0 })).not.toThrow();
+    expect(buildSessionReplay(parsed, { maxFrames: 0 }).frames).toHaveLength(0);
+  });
+
   it('handles an empty transcript', () => {
     const replay = buildSessionReplay(parseTranscript(''));
     expect(replay.frames).toHaveLength(0);

@@ -99,4 +99,32 @@ describe('ProcessController (injected OS ops)', () => {
     expect(r.ok).toBe(false);
     expect(r.reason).toContain('no tmux pane');
   });
+
+  it('re-validates the pid before signaling and refuses (without killing) if it is no longer an agent', async () => {
+    const killed: Array<[number, string]> = [];
+    const ops: ProcessOps = {
+      kill: (pid, signal) => killed.push([pid, signal]),
+      focus: async () => ({ ok: true, reason: 'ok' }),
+      verifyAgent: async () => false, // pid recycled / no longer an agent
+    };
+    const c = new ProcessController({ allow: true, protectedPids: [1] }, ops);
+    const r = await c.run(TARGET, 'pause');
+    expect(r.ok).toBe(false);
+    expect(r.reason).toContain('no longer matches an agent');
+    expect(killed).toHaveLength(0); // crucial: nothing was signaled
+  });
+
+  it('signals when re-validation confirms the pid is still an agent', async () => {
+    const killed: Array<[number, string]> = [];
+    let verified = 0;
+    const ops: ProcessOps = {
+      kill: (pid, signal) => killed.push([pid, signal]),
+      focus: async () => ({ ok: true, reason: 'ok' }),
+      verifyAgent: async () => { verified++; return true; },
+    };
+    const c = new ProcessController({ allow: true, protectedPids: [1] }, ops);
+    expect((await c.run(TARGET, 'resume')).ok).toBe(true);
+    expect(verified).toBe(1);
+    expect(killed).toEqual([[4242, 'SIGCONT']]);
+  });
 });

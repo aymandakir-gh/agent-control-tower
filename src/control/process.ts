@@ -10,6 +10,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { assessControl } from './assess.js';
+import { looksLikeAgent } from './locate.js';
 import type { Controller, ControlAction, ControlPolicy, ControlResult, ControlTarget } from './types.js';
 
 const exec = promisify(execFile);
@@ -25,6 +26,22 @@ export interface ProcessOps {
   kill(pid: number, signal: NodeJS.Signals): void;
   /** Bring the agent's terminal forward (best-effort). */
   focus(target: ControlTarget): Promise<FocusOutcome>;
+  /**
+   * Re-confirm `pid` still belongs to an agent process *right now* (closes the
+   * locate→signal TOCTOU window / pid recycling). Optional; when present it is
+   * checked before pause/resume.
+   */
+  verifyAgent?(pid: number): Promise<boolean>;
+}
+
+/** Real re-validation: read the live command for `pid` and re-apply the classifier. */
+export async function isAgentPid(pid: number): Promise<boolean> {
+  try {
+    const { stdout } = await exec('ps', ['-o', 'command=', '-p', String(pid)]);
+    return looksLikeAgent(stdout.trim());
+  } catch {
+    return false; // process gone / ps failed → not safe to signal
+  }
 }
 
 /**
@@ -58,6 +75,7 @@ export const realProcessOps: ProcessOps = {
     process.kill(pid, signal);
   },
   focus: focusViaTmux,
+  verifyAgent: isAgentPid,
 };
 
 export class ProcessController implements Controller {
@@ -73,13 +91,22 @@ export class ProcessController implements Controller {
     }
     const pid = target.pid as number; // guaranteed valid by assessControl
     try {
-      if (action === 'pause') {
-        this.ops.kill(pid, 'SIGSTOP');
-        return { ok: true, action, sessionId: target.sessionId, reason: `paused (SIGSTOP) pid ${pid}`, pid };
-      }
-      if (action === 'resume') {
-        this.ops.kill(pid, 'SIGCONT');
-        return { ok: true, action, sessionId: target.sessionId, reason: `resumed (SIGCONT) pid ${pid}`, pid };
+      if (action === 'pause' || action === 'resume') {
+        // Defense-in-depth: re-confirm the pid is still an agent before signaling
+        // (the locator read it earlier; a pid can be recycled in between).
+        if (this.ops.verifyAgent && !(await this.ops.verifyAgent(pid))) {
+          return {
+            ok: false,
+            action,
+            sessionId: target.sessionId,
+            reason: `pid ${pid} no longer matches an agent process — not signaling`,
+            pid,
+          };
+        }
+        const signal = action === 'pause' ? 'SIGSTOP' : 'SIGCONT';
+        this.ops.kill(pid, signal);
+        const verb = action === 'pause' ? 'paused (SIGSTOP)' : 'resumed (SIGCONT)';
+        return { ok: true, action, sessionId: target.sessionId, reason: `${verb} pid ${pid}`, pid };
       }
       // focus
       const outcome = await this.ops.focus(target);

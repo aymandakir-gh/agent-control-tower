@@ -89,6 +89,14 @@ describe('web API (sample fleet)', () => {
     expect(res.json().bucketMs).toBe(60_000);
   });
 
+  it('GET /api/trend echoes the bucket actually used for non-positive/garbage widths', async () => {
+    // Regression: 0 / negative used to be echoed verbatim while bucketing fell back to 1h.
+    for (const q of ['0', '-100', 'abc']) {
+      const res = await app.inject({ method: 'GET', url: `/api/trend?bucketMs=${q}` });
+      expect(res.json().bucketMs).toBe(3_600_000);
+    }
+  });
+
   it('GET / serves the self-contained dashboard with the upgraded features', async () => {
     const res = await app.inject({ method: 'GET', url: '/' });
     expect(res.statusCode).toBe(200);

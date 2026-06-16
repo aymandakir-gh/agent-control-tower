@@ -84,6 +84,10 @@ export function eventLabel(ev: NormalizedEvent): string {
 /** Pick the indices of meaningful events to emit as frames (even sampling). */
 function frameIndices(meaningful: number[], maxFrames: number): number[] {
   if (meaningful.length <= maxFrames) return meaningful;
+  // Degenerate caps. maxFrames < 1 → no frames; maxFrames === 1 → just the final
+  // frame (preserves "last always kept"). Avoids the (maxFrames-1) div-by-zero below.
+  if (maxFrames < 1) return [];
+  if (maxFrames === 1) return meaningful.length > 0 ? [meaningful[meaningful.length - 1]] : [];
   const out: number[] = [];
   const step = (meaningful.length - 1) / (maxFrames - 1);
   for (let i = 0; i < maxFrames; i++) out.push(meaningful[Math.round(i * step)]);
