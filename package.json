@@ -1,0 +1,62 @@
+{
+  "name": "agent-control-tower",
+  "version": "0.1.0",
+  "description": "A local-first control tower for fleets of AI coding agents. Observe & steer many parallel Claude Code agents from one screen.",
+  "type": "module",
+  "license": "MIT",
+  "author": "agent-control-tower contributors",
+  "homepage": "https://github.com/aymandakir-gh/agent-control-tower",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aymandakir-gh/agent-control-tower.git"
+  },
+  "bugs": {
+    "url": "https://github.com/aymandakir-gh/agent-control-tower/issues"
+  },
+  "keywords": [
+    "ai",
+    "agents",
+    "claude",
+    "claude-code",
+    "dashboard",
+    "tui",
+    "observability",
+    "local-first",
+    "cli"
+  ],
+  "bin": {
+    "agent-control-tower": "dist/cli.js",
+    "act": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "tests/fixtures/sample",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:cov": "vitest run --coverage",
+    "dev": "tsx src/cli.ts",
+    "clean": "rm -rf dist coverage"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "@types/node": "^22.10.5",
+    "@vitest/coverage-v8": "^2.1.8",
+    "eslint": "^9.17.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.19.1",
+    "vitest": "^2.1.8"
+  }
+}
