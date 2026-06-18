@@ -129,6 +129,9 @@ export function createServer(opts: WebServerOptions = {}): FastifyInstance {
   });
   const load = opts.loader ?? loadFleetView;
   const loadOpts = loadOptionsFrom(opts);
+  // Persistent parse cache for the server's lifetime: re-parse only transcripts
+  // whose file changed, instead of every transcript on every refresh cycle.
+  loadOpts.transcriptCache = new Map();
   const indexHtml = readIndexHtml();
 
   // Control is disabled by default; the route is registered only when enabled

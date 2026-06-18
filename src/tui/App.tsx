@@ -15,7 +15,13 @@ import {
   type ControlAction,
   type ControlSetup,
 } from '../control/index.js';
-import { loadFleetView, watchRoot, type FleetView, type LoadOptions } from '../sources/index.js';
+import {
+  loadFleetView,
+  watchRoot,
+  type FleetView,
+  type LoadOptions,
+  type TranscriptCache,
+} from '../sources/index.js';
 import { clamp } from '../core/util.js';
 import { Board, type SortKey } from './Board.js';
 import { nextSort, sortAgentsBy } from './sort.js';
@@ -53,10 +59,16 @@ export function App({ options, loader = loadFleetView, allowControl, control, ti
   const [error, setError] = useState<string | undefined>(undefined);
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
+  // Persist across ticks so unchanged transcripts aren't re-parsed every poll.
+  const transcriptCacheRef = useRef<TranscriptCache>(new Map());
 
   const refresh = useCallback(async () => {
     try {
-      const next = await loader({ ...options, sample: options.sample ?? false });
+      const next = await loader({
+        ...options,
+        sample: options.sample ?? false,
+        transcriptCache: transcriptCacheRef.current,
+      });
       setView(applySort(next, sortKey));
       if (!options.sample) setNow(Date.now());
       else setNow(next.now);

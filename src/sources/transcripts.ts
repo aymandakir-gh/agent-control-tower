@@ -90,12 +90,41 @@ async function mapWithConcurrency<T, R>(
   return results;
 }
 
+/** One parsed transcript plus the file stat it was parsed from. */
+interface TranscriptCacheEntry {
+  mtimeMs: number;
+  size: number;
+  parsed: ParsedTranscript;
+}
+
+/**
+ * Opt-in parse cache keyed by file path. Pass the same map across polls to skip
+ * re-reading and re-parsing files that haven't changed — a polling dashboard
+ * otherwise re-parses every transcript on every tick. A change to a file's
+ * mtime OR size invalidates its entry (Claude Code appends, so size always
+ * grows), and entries for deleted files are pruned each scan.
+ */
+export type TranscriptCache = Map<string, TranscriptCacheEntry>;
+
 /** Discover and parse every transcript under `root` using `adapter` (read-only). */
-export async function scanRoot(root: string, adapter: SourceAdapter = claudeCodeAdapter): Promise<ParsedTranscript[]> {
+export async function scanRoot(
+  root: string,
+  adapter: SourceAdapter = claudeCodeAdapter,
+  cache?: TranscriptCache,
+): Promise<ParsedTranscript[]> {
   const refs = await adapter.discover(root);
-  const parsed = await mapWithConcurrency(refs, READ_CONCURRENCY, (r) =>
-    adapter.read(r).catch(() => null),
-  );
+  const parsed = await mapWithConcurrency(refs, READ_CONCURRENCY, async (r) => {
+    const hit = cache?.get(r.path);
+    if (hit && hit.mtimeMs === r.mtimeMs && hit.size === r.size) return hit.parsed;
+    const result = await adapter.read(r).catch(() => null);
+    if (cache && result) cache.set(r.path, { mtimeMs: r.mtimeMs, size: r.size, parsed: result });
+    return result;
+  });
+  if (cache) {
+    // Drop entries for files that no longer exist (deleted sessions).
+    const live = new Set(refs.map((r) => r.path));
+    for (const key of cache.keys()) if (!live.has(key)) cache.delete(key);
+  }
   return parsed.filter((p): p is ParsedTranscript => p !== null);
 }
 
@@ -127,6 +156,9 @@ export interface LoadOptions {
   /** Keep the parsed transcripts on the view (for trend/replay). Off by default
    *  so `scan --json` and the API stay compact. */
   includeTranscripts?: boolean;
+  /** Reuse parsed transcripts across polls (skip re-parsing unchanged files).
+   *  Pass the same map on every tick of a polling loop. */
+  transcriptCache?: TranscriptCache;
 }
 
 export interface FleetView {
@@ -173,7 +205,7 @@ export async function loadFleetView(rootOrOptions: string | LoadOptions = {}, ma
         ? sampleRoot()
         : (options.root ?? adapter.defaultRoot());
 
-  const transcripts = await scanRoot(root, adapter);
+  const transcripts = await scanRoot(root, adapter, options.transcriptCache);
   const now = resolveNow(transcripts, options, Date.now());
   const deriveOpts = {
     ...(options.config ? { config: options.config } : {}),
