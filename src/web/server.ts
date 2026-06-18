@@ -44,6 +44,15 @@ export interface WebServerOptions {
   control?: ControlSetup;
   /** Injectable loader (tests). Defaults to the real read-only loader. */
   loader?: (opts: LoadOptions) => Promise<FleetView>;
+  /**
+   * Freshness window (ms) for the per-request fleet snapshot. The dashboard
+   * fires several endpoints in parallel every refresh; without this they would
+   * each re-walk and re-parse the whole transcript tree. A short TTL collapses
+   * one burst into a single scan. Concurrent loads are always deduped (single
+   * flight) regardless of this value. Default 500ms; 0 disables the freshness
+   * cache (each non-concurrent request still scans).
+   */
+  cacheTtlMs?: number;
 }
 
 function loadOptionsFrom(opts: WebServerOptions): LoadOptions {
@@ -81,7 +90,30 @@ export function createServer(opts: WebServerOptions = {}): FastifyInstance {
   const controlRoutes = opts.allowControl === true || opts.control !== undefined;
 
   // root (when set) now travels inside loadOpts, honored by loadFleetView.
-  const view = async (): Promise<FleetView> => load(loadOpts);
+  //
+  // Single-flight + short TTL cache: a dashboard refresh fires /api/fleet,
+  // /api/timeline, /api/trend and /api/health in parallel, and each read
+  // endpoint calls view() → load() → a full readdir walk + parse of every
+  // transcript. Sharing one in-flight load across the burst (and reusing it for
+  // a short freshness window) cuts the per-cycle scans from 4 to 1 while keeping
+  // the read-only/stateless contract intact. The default loader resolves to the
+  // exact same snapshot for all four requests anyway.
+  const cacheTtlMs = opts.cacheTtlMs ?? 500;
+  let inFlight: Promise<FleetView> | null = null;
+  let cached: { value: FleetView; at: number } | null = null;
+  const view = async (): Promise<FleetView> => {
+    if (inFlight) return inFlight; // dedupe concurrent loads (single flight)
+    if (cached && cacheTtlMs > 0 && Date.now() - cached.at < cacheTtlMs) return cached.value;
+    inFlight = load(loadOpts)
+      .then((value) => {
+        if (cacheTtlMs > 0) cached = { value, at: Date.now() };
+        return value;
+      })
+      .finally(() => {
+        inFlight = null;
+      });
+    return inFlight;
+  };
 
   app.get('/api/health', async () => {
     const v = await view();

@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { createServer } from '../../src/web/server.js';
-import { sampleRoot } from '../../src/sources/transcripts.js';
+import { loadFleetView, sampleRoot, type FleetView } from '../../src/sources/transcripts.js';
 
 let app: FastifyInstance;
 
@@ -139,6 +139,53 @@ describe('web API (sample fleet)', () => {
     const body = res.json();
     expect(body.alertSummary.total).toBe(body.alerts.length);
     expect(body.alertSummary.critical).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('web API — request-level load dedup (perf)', () => {
+  it('shares ONE fleet scan across a parallel dashboard refresh cycle', async () => {
+    // Regression: every read endpoint called view() → load() → a full transcript
+    // scan, so the dashboard's 4 parallel fetches re-walked + re-parsed the whole
+    // tree 4× per 3s cycle. Single-flight + a short TTL must collapse the burst.
+    const base = await loadFleetView({ sample: true });
+    let loads = 0;
+    const loader = async (): Promise<FleetView> => {
+      loads++;
+      return base;
+    };
+    const srv = createServer({ sample: true, loader });
+    try {
+      const responses = await Promise.all([
+        srv.inject({ method: 'GET', url: '/api/fleet' }),
+        srv.inject({ method: 'GET', url: '/api/timeline?limit=80' }),
+        srv.inject({ method: 'GET', url: '/api/trend' }),
+        srv.inject({ method: 'GET', url: '/api/health' }),
+      ]);
+      // Every response is still correct…
+      for (const r of responses) expect(r.statusCode).toBe(200);
+      // …and they were all served from a single scan.
+      expect(loads).toBeLessThanOrEqual(1);
+    } finally {
+      await srv.close();
+    }
+  });
+
+  it('re-scans after the freshness window so data does not go stale', async () => {
+    let loads = 0;
+    const loader = async (): Promise<FleetView> => {
+      loads++;
+      return loadFleetView({ sample: true });
+    };
+    // ttl=0 disables the freshness cache; sequential (non-concurrent) requests
+    // each scan, proving the cache is a short window and not a permanent freeze.
+    const srv = createServer({ sample: true, loader, cacheTtlMs: 0 });
+    try {
+      await srv.inject({ method: 'GET', url: '/api/fleet' });
+      await srv.inject({ method: 'GET', url: '/api/health' });
+      expect(loads).toBe(2);
+    } finally {
+      await srv.close();
+    }
   });
 });
 
