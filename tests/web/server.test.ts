@@ -269,3 +269,69 @@ describe('web API — explicit --root', () => {
     }
   });
 });
+
+describe('web API — loopback / DNS-rebinding guard', () => {
+  async function controlServer() {
+    const { FakeController } = await import('../../src/control/index.js');
+    const controller = new FakeController({ allow: true, protectedPids: [1] });
+    const control = { controller, locator: { locate: async () => 4242 }, enabled: true };
+    return { srv: createServer({ sample: true, control }), controller };
+  }
+
+  it('rejects a control POST with a non-loopback Host (403, controller untouched)', async () => {
+    const { srv, controller } = await controlServer();
+    try {
+      const res = await srv.inject({
+        method: 'POST',
+        url: '/api/agents/a1111111-working-bash/control',
+        headers: { host: 'attacker.example' },
+        payload: { action: 'pause' },
+      });
+      expect(res.statusCode).toBe(403);
+      expect(controller.calls).toHaveLength(0);
+    } finally {
+      await srv.close();
+    }
+  });
+
+  it('rejects a control POST with a non-loopback Origin (403)', async () => {
+    const { srv, controller } = await controlServer();
+    try {
+      const res = await srv.inject({
+        method: 'POST',
+        url: '/api/agents/a1111111-working-bash/control',
+        headers: { host: '127.0.0.1:7777', origin: 'http://evil.example' },
+        payload: { action: 'pause' },
+      });
+      expect(res.statusCode).toBe(403);
+      expect(controller.calls).toHaveLength(0);
+    } finally {
+      await srv.close();
+    }
+  });
+
+  it('allows a control POST from a loopback Host + Origin', async () => {
+    const { srv, controller } = await controlServer();
+    try {
+      const res = await srv.inject({
+        method: 'POST',
+        url: '/api/agents/a1111111-working-bash/control',
+        headers: { host: '127.0.0.1:7777', origin: 'http://127.0.0.1:7777' },
+        payload: { action: 'pause' },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(controller.calls).toHaveLength(1);
+    } finally {
+      await srv.close();
+    }
+  });
+
+  it('guards read endpoints too — non-loopback Host gets 403', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/health',
+      headers: { host: 'attacker.example' },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+});
