@@ -1,8 +1,45 @@
 import { describe, expect, it } from 'vitest';
-import { buildSessionReplay, eventLabel, parseTranscript, type NormalizedEvent } from '../../src/core/index.js';
+import {
+  buildSessionReplay,
+  estimateCost,
+  eventLabel,
+  parseTranscript,
+  sumUsage,
+  totalTokens,
+  type NormalizedEvent,
+  type ParsedTranscript,
+} from '../../src/core/index.js';
 import { TranscriptBuilder } from '../fixtures/builder.js';
 
 const parse = (b: TranscriptBuilder) => parseTranscript(b.build());
+
+const REPLAY_MEANINGFUL = new Set<NormalizedEvent['kind']>([
+  'human_prompt',
+  'assistant_message',
+  'tool_result',
+  'turn_duration',
+  'system',
+]);
+
+/**
+ * The previous O(events × frames) reconstruction, re-derived independently from
+ * the public cost/token helpers. Used to pin that the optimized single-pass
+ * implementation produces byte-identical per-frame cost + token totals.
+ */
+function referenceFrameTotals(parsed: ParsedTranscript): { costUsd: number[]; totalTokens: number[] } {
+  const events = parsed.events;
+  const idx: number[] = [];
+  for (let i = 0; i < events.length; i++) if (REPLAY_MEANINGFUL.has(events[i].kind)) idx.push(i);
+  const costUsd: number[] = [];
+  const totals: number[] = [];
+  for (const i of idx) {
+    const frameTs = events[i].ts;
+    const all = [...events.slice(0, i + 1), ...parsed.sidechainEvents.filter((s) => s.ts <= frameTs)];
+    costUsd.push(estimateCost(all).usd);
+    totals.push(totalTokens(sumUsage(all)));
+  }
+  return { costUsd, totalTokens: totals };
+}
 
 describe('buildSessionReplay', () => {
   it('emits one frame per meaningful event with evolving status', () => {
@@ -96,6 +133,65 @@ describe('buildSessionReplay', () => {
       [{ ...base, kind: 'meta', recordType: 'attachment' }, 'attachment'],
     ];
     for (const [ev, label] of cases) expect(eventLabel(ev)).toBe(label);
+  });
+
+  it('per-frame cost + tokens match the reference O(n²) derivation (with messy subagents)', () => {
+    // Pins the single-pass reconstruction to the old algorithm byte-for-byte,
+    // including subagent activity whose timestamps are NOT in array order.
+    const main = new TranscriptBuilder({ sessionId: 's1', cwd: '/Users/dev/projects/api-server' });
+    for (let i = 0; i < 40; i++) {
+      main
+        .prompt(`q${i}`)
+        .assistant({ tools: [{ name: 'Bash', id: `t${i}` }], usage: { input: 111 + i, output: 37, cacheRead: 13, cacheWrite5m: 5 } })
+        .toolResult({ toolUseId: `t${i}`, isError: i % 7 === 0 })
+        .assistant({ text: `d${i}`, stopReason: 'end_turn', usage: { input: 29, output: 17 } });
+    }
+    let side = '';
+    for (let k = 0; k < 25; k++) {
+      // Interleaved, out-of-array-order timestamps to stress the fold ordering.
+      const sb = new TranscriptBuilder({ sessionId: 's1', isSidechain: true, agentId: `a${k % 3}`, startTs: main.clock - 80_000 + ((k * 7919) % 50_000) });
+      sb.assistant({ text: `s${k}`, stopReason: 'end_turn', usage: { input: 300 + k, output: 200 + k, cacheRead: 9 } });
+      side += sb.build();
+    }
+    const parsed = parseTranscript(main.build() + side);
+    const replay = buildSessionReplay(parsed);
+    const ref = referenceFrameTotals(parsed);
+    expect(replay.frames.map((f) => f.costUsd)).toEqual(ref.costUsd);
+    expect(replay.frames.map((f) => f.totalTokens)).toEqual(ref.totalTokens);
+  });
+
+  it('reconstructs a large session far faster than the old per-frame derivation', () => {
+    // Each prompt/tool/result/turn adds 4 events; 8k events → frames capped at
+    // 1000. The old code re-derived state from event 0 for EVERY frame
+    // (referenceFrameTotals below mirrors that O(events × frames) work).
+    // Comparing both on the same run normalizes out machine speed and coverage
+    // overhead, so the guard is robust to noisy/instrumented CI yet fails iff
+    // the per-frame re-derivation creeps back in. The real correctness pin is
+    // the byte-identical test above.
+    const b = new TranscriptBuilder({ sessionId: 'big' });
+    for (let i = 0; i < 2000; i++) {
+      b.prompt(`q${i}`)
+        .assistant({ tools: [{ name: 'Bash', id: `t${i}` }], usage: { input: 50, output: 20, cacheRead: 5 } })
+        .toolResult({ toolUseId: `t${i}` })
+        .assistant({ text: `done ${i}`, stopReason: 'end_turn', usage: { input: 10, output: 8 } });
+    }
+    const parsed = parseTranscript(b.build());
+    expect(parsed.events.length).toBeGreaterThan(7_000);
+
+    const tOldStart = performance.now();
+    referenceFrameTotals(parsed); // the old O(events × frames) shape
+    const oldMs = performance.now() - tOldStart;
+
+    const tNewStart = performance.now();
+    const replay = buildSessionReplay(parsed);
+    const newMs = performance.now() - tNewStart;
+
+    expect(replay.frames.length).toBeLessThanOrEqual(1000);
+    expect(replay.frames.length).toBeGreaterThan(0);
+    // Single-pass is ~30× faster in practice; require a conservative 5× so the
+    // assertion is robust to noisy/instrumented CI yet still catches a return to
+    // re-deriving per frame.
+    expect(newMs * 5).toBeLessThan(oldMs);
   });
 
   it('accounts subagent cost up to each frame', () => {
