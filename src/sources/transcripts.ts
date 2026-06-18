@@ -63,10 +63,39 @@ export function readTranscript(path: string): Promise<ParsedTranscript> {
   return claudeCodeAdapter.read({ path, sessionId: '', projectDir: dirname(path), mtimeMs: 0, size: 0 });
 }
 
+/**
+ * Max transcript files read concurrently. A real `~/.claude/projects` can hold
+ * thousands of sessions; reading them all at once (a single Promise.all over
+ * every ref) opens that many file descriptors simultaneously and throws EMFILE
+ * ("too many open files"). A bounded pool keeps descriptor use flat while
+ * staying fully parallel up to the limit.
+ */
+const READ_CONCURRENCY = 64;
+
+/** Map over items with at most `limit` concurrent workers, preserving order. */
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i]!);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()));
+  return results;
+}
+
 /** Discover and parse every transcript under `root` using `adapter` (read-only). */
 export async function scanRoot(root: string, adapter: SourceAdapter = claudeCodeAdapter): Promise<ParsedTranscript[]> {
   const refs = await adapter.discover(root);
-  const parsed = await Promise.all(refs.map((r) => adapter.read(r).catch(() => null)));
+  const parsed = await mapWithConcurrency(refs, READ_CONCURRENCY, (r) =>
+    adapter.read(r).catch(() => null),
+  );
   return parsed.filter((p): p is ParsedTranscript => p !== null);
 }
 

@@ -3,6 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { loadFleetView, readTranscript, sampleRoot, scanRoot } from '../../src/sources/transcripts.js';
+import type { SourceAdapter } from '../../src/sources/adapter.js';
+import type { ParsedTranscript } from '../../src/core/types.js';
 import type { AgentSnapshot } from '../../src/core/index.js';
 
 const byProject = (agents: AgentSnapshot[], project: string): AgentSnapshot =>
@@ -76,5 +78,48 @@ describe('sources/transcripts — sessionId backfill', () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('sources/transcripts — scanRoot read concurrency', () => {
+  it('bounds concurrent reads (no EMFILE on a large root) and preserves order', async () => {
+    const N = 250;
+    const empty: ParsedTranscript = {
+      events: [],
+      sidechainEvents: [],
+      stats: { totalLines: 0, parsed: 0, skipped: 0 },
+    };
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const fake: SourceAdapter = {
+      id: 'fake',
+      displayName: 'Fake',
+      extension: '.jsonl',
+      defaultRoot: () => '/tmp/fake',
+      discover: async () =>
+        Array.from({ length: N }, (_, i) => ({
+          path: `/r/${i}.jsonl`,
+          sessionId: `s${i}`,
+          projectDir: '/r',
+          mtimeMs: 0,
+          size: 0,
+        })),
+      read: async (ref) => {
+        inFlight++;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        await new Promise((r) => setTimeout(r, 1));
+        inFlight--;
+        return { ...empty, sessionId: ref.sessionId };
+      },
+      parse: () => empty,
+    };
+
+    const out = await scanRoot('/r', fake);
+    // All sessions parsed, in discovery order (the pool writes results by index).
+    expect(out).toHaveLength(N);
+    expect(out.map((t) => t.sessionId)).toEqual(Array.from({ length: N }, (_, i) => `s${i}`));
+    // Genuinely parallel, but capped — never one-file-at-a-time, never all N at once.
+    expect(maxInFlight).toBeGreaterThan(1);
+    expect(maxInFlight).toBeLessThanOrEqual(64);
   });
 });
