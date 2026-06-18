@@ -16,6 +16,7 @@ import {
   type ControlSetup,
 } from '../control/index.js';
 import { loadFleetView, watchRoot, type FleetView, type LoadOptions } from '../sources/index.js';
+import { clamp } from '../core/util.js';
 import { Board, type SortKey } from './Board.js';
 import { nextSort, sortAgentsBy } from './sort.js';
 
@@ -98,6 +99,11 @@ export function App({ options, loader = loadFleetView, allowControl, control, ti
   }, [sortKey]);
 
   const agentCount = view?.fleet.agents.length ?? 0;
+  // selectedIndex is only clamped on keypress against the agentCount at that
+  // moment; a refresh/watcher that loads a SMALLER fleet can leave it pointing
+  // past the end. Clamp once here and use it for BOTH the highlighted row and
+  // the control target so they never diverge.
+  const clampedIndex = clamp(selectedIndex, 0, Math.max(0, agentCount - 1));
 
   useInput((input, key) => {
     if (input === 'q' || (key.ctrl && input === 'c')) {
@@ -129,7 +135,7 @@ export function App({ options, loader = loadFleetView, allowControl, control, ti
       setSelectedIndex((i) => Math.min(Math.max(0, agentCount - 1), i + 1));
       return;
     }
-    const selected = view?.fleet.agents[selectedIndex];
+    const selected = view?.fleet.agents[clampedIndex];
     const action: ControlAction | undefined =
       input === 'f' ? 'focus' : input === 'z' ? 'pause' : input === 'x' ? 'resume' : undefined;
     if (action && selected) {
@@ -157,7 +163,6 @@ export function App({ options, loader = loadFleetView, allowControl, control, ti
     );
   }
 
-  const clampedIndex = Math.min(selectedIndex, Math.max(0, agentCount - 1));
   return (
     <Board
       view={view}
