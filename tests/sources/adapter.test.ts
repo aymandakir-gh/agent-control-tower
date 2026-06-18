@@ -20,11 +20,16 @@ describe('adapter registry', () => {
     expect(Object.keys(ADAPTERS).sort()).toEqual(['claude-code', 'generic-jsonl']);
   });
 
-  it('resolves adapters by id, defaulting to Claude Code', () => {
+  it('resolves adapters by id, defaulting to Claude Code only when none is given', () => {
     expect(getAdapter('generic-jsonl')).toBe(genericJsonlAdapter);
     expect(getAdapter('claude-code')).toBe(claudeCodeAdapter);
-    expect(getAdapter('nope')).toBe(claudeCodeAdapter);
     expect(getAdapter(undefined)).toBe(claudeCodeAdapter);
+  });
+
+  it('throws on an explicit but unknown source instead of silently falling back', () => {
+    // A typo'd --source must not quietly serve Claude Code data.
+    expect(() => getAdapter('nope')).toThrow(/unknown source "nope"/);
+    expect(() => getAdapter('nope')).toThrow(/claude-code/); // lists valid ids
   });
 
   it('reports known sources', () => {

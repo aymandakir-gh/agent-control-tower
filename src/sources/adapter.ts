@@ -83,10 +83,21 @@ export function listSourceIds(): string[] {
   return Object.keys(ADAPTERS);
 }
 
-/** Resolve an adapter by id; defaults to Claude Code for unknown/empty ids. */
+/**
+ * Resolve an adapter by id. With no id (no `--source`) this defaults to Claude
+ * Code; an explicit but unknown id throws rather than silently falling back —
+ * otherwise a typo like `--source clade-code` would quietly read Claude Code
+ * data and the user would never know their requested source wasn't used.
+ */
 export function getAdapter(id?: string): SourceAdapter {
-  if (id && id in ADAPTERS) return ADAPTERS[id];
-  return claudeCodeAdapter;
+  if (id === undefined) return claudeCodeAdapter;
+  const adapter = ADAPTERS[id];
+  if (!adapter) {
+    throw new Error(
+      `unknown source "${id}". Available sources: ${Object.keys(ADAPTERS).join(', ')}.`,
+    );
+  }
+  return adapter;
 }
 
 /** True iff `id` names a registered adapter. */
