@@ -50,12 +50,20 @@ export interface ResolvedPricing {
 export function resolvePricing(model: string, table: PricingTable = DEFAULT_PRICING): ResolvedPricing {
   if (model in table) return { pricing: table[model], estimated: false };
 
-  // Normalize: drop a "[1m]" context suffix and any trailing "-<date>" stamp.
-  const normalized = model
-    .replace(/\[[^\]]*\]$/, '')
-    .replace(/-\d{6,8}$/, '');
-  if (normalized !== model && normalized in table) {
-    return { pricing: table[normalized], estimated: false };
+  // A trailing date stamp ("-20251001") is just a dated alias — identical
+  // pricing, so this stays an exact (non-estimated) match.
+  const dated = model.replace(/-\d{6,8}$/, '');
+  if (dated !== model && dated in table) {
+    return { pricing: table[dated], estimated: false };
+  }
+
+  // A "[1m]"-style context suffix is NOT a pure alias: the 1M-context variant is
+  // priced differently (higher) than the base context. Resolve to base pricing
+  // as an approximation but flag it estimated, so cost UIs show "~" and don't
+  // silently understate 1M-context spend.
+  const noContext = model.replace(/\[[^\]]*\]$/, '').replace(/-\d{6,8}$/, '');
+  if (noContext !== model && noContext in table) {
+    return { pricing: table[noContext], estimated: true };
   }
 
   if (/synthetic/i.test(model)) return { pricing: ZERO_PRICING, estimated: false };
