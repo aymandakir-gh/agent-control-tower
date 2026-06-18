@@ -77,9 +77,56 @@ function readIndexHtml(): string {
   }
 }
 
+/**
+ * Hostnames accepted by the loopback (DNS-rebinding) guard. The server binds
+ * 127.0.0.1, but browsers still deliver requests to it from any page the user
+ * visits, and a DNS-rebinding attack can point an attacker-controlled domain at
+ * 127.0.0.1 — so we additionally require the Host (and Origin, when present) to
+ * be a loopback address. Without this, a malicious page could drive the opt-in
+ * control endpoint (pause/resume agents) without consent.
+ */
+const LOOPBACK_HOSTNAMES = new Set(['127.0.0.1', 'localhost', '::1']);
+
+/** Bare hostname (no port, no brackets) from a Host-style header value. */
+function hostnameFromHostHeader(host: string | undefined): string | undefined {
+  if (!host) return undefined;
+  const h = host.trim().toLowerCase();
+  if (h.startsWith('[')) return h.slice(1, h.indexOf(']')); // "[::1]:7777" → "::1"
+  const i = h.indexOf(':');
+  return i === -1 ? h : h.slice(0, i); // "127.0.0.1:7777" → "127.0.0.1"
+}
+
+function isLoopbackHost(host: string | undefined): boolean {
+  const h = hostnameFromHostHeader(host);
+  return h !== undefined && LOOPBACK_HOSTNAMES.has(h);
+}
+
+/** An Origin header, when present, must also be loopback (absent Origin is fine). */
+function isLoopbackOrigin(origin: string | undefined): boolean {
+  if (!origin) return true;
+  try {
+    const h = new URL(origin).hostname.toLowerCase().replace(/^\[|\]$/g, '');
+    return LOOPBACK_HOSTNAMES.has(h);
+  } catch {
+    return false; // malformed Origin → reject
+  }
+}
+
 /** Build (but do not start) the Fastify app. Use `.inject()` in tests. */
 export function createServer(opts: WebServerOptions = {}): FastifyInstance {
   const app = Fastify({ logger: false });
+
+  // DNS-rebinding / CSRF guard: this dashboard is loopback-only, so reject any
+  // request whose Host — or Origin, when the browser sends one — is not a
+  // loopback address, before any route handler runs.
+  app.addHook('onRequest', async (req, reply) => {
+    if (!isLoopbackHost(req.headers.host) || !isLoopbackOrigin(req.headers.origin)) {
+      return reply.code(403).send({
+        error: 'forbidden',
+        message: 'agent-control-tower serves loopback clients only (DNS-rebinding guard)',
+      });
+    }
+  });
   const load = opts.loader ?? loadFleetView;
   const loadOpts = loadOptionsFrom(opts);
   const indexHtml = readIndexHtml();
