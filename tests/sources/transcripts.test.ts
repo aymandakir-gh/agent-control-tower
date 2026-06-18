@@ -2,7 +2,13 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { loadFleetView, readTranscript, sampleRoot, scanRoot } from '../../src/sources/transcripts.js';
+import {
+  loadFleetView,
+  readTranscript,
+  sampleRoot,
+  scanRoot,
+  type TranscriptCache,
+} from '../../src/sources/transcripts.js';
 import type { SourceAdapter } from '../../src/sources/adapter.js';
 import type { ParsedTranscript } from '../../src/core/types.js';
 import type { AgentSnapshot } from '../../src/core/index.js';
@@ -121,5 +127,53 @@ describe('sources/transcripts — scanRoot read concurrency', () => {
     // Genuinely parallel, but capped — never one-file-at-a-time, never all N at once.
     expect(maxInFlight).toBeGreaterThan(1);
     expect(maxInFlight).toBeLessThanOrEqual(64);
+  });
+});
+
+describe('sources/transcripts — scanRoot parse cache', () => {
+  it('reuses unchanged files, re-parses changed ones, and prunes deleted ones', async () => {
+    const empty: ParsedTranscript = {
+      events: [],
+      sidechainEvents: [],
+      stats: { totalLines: 0, parsed: 0, skipped: 0 },
+    };
+    let reads = 0;
+    const refA = { path: '/r/a.jsonl', sessionId: 'a', projectDir: '/r', mtimeMs: 1, size: 10 };
+    const refB = { path: '/r/b.jsonl', sessionId: 'b', projectDir: '/r', mtimeMs: 1, size: 20 };
+    let refs = [refA, refB];
+    const adapter: SourceAdapter = {
+      id: 'fake',
+      displayName: 'Fake',
+      extension: '.jsonl',
+      defaultRoot: () => '/r',
+      discover: async () => refs,
+      read: async (ref) => {
+        reads++;
+        return { ...empty, sessionId: ref.sessionId };
+      },
+      parse: () => empty,
+    };
+    const cache: TranscriptCache = new Map();
+
+    // First scan reads both files.
+    const first = await scanRoot('/r', adapter, cache);
+    expect(first.map((t) => t.sessionId).sort()).toEqual(['a', 'b']);
+    expect(reads).toBe(2);
+
+    // Nothing changed → both served from cache, no new reads.
+    await scanRoot('/r', adapter, cache);
+    expect(reads).toBe(2);
+
+    // b's size changed → only b is re-parsed.
+    refs = [refA, { ...refB, size: 21 }];
+    await scanRoot('/r', adapter, cache);
+    expect(reads).toBe(3);
+
+    // a deleted → no new read, and its cache entry is pruned.
+    refs = [{ ...refB, size: 21 }];
+    await scanRoot('/r', adapter, cache);
+    expect(reads).toBe(3);
+    expect(cache.has('/r/a.jsonl')).toBe(false);
+    expect(cache.has('/r/b.jsonl')).toBe(true);
   });
 });
