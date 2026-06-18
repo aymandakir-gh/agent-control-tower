@@ -8,9 +8,11 @@ describe('resolvePricing', () => {
     expect(r.pricing).toEqual(DEFAULT_PRICING['claude-opus-4-8']);
   });
 
-  it('strips a [1m] context suffix to match', () => {
+  it('resolves a [1m] context suffix to base pricing but flags it estimated', () => {
+    // The 1M-context variant is priced higher than base, so base pricing is an
+    // approximation — it must be flagged estimated (UIs show "~"), not exact.
     const r = resolvePricing('claude-opus-4-8[1m]');
-    expect(r.estimated).toBe(false);
+    expect(r.estimated).toBe(true);
     expect(r.pricing).toEqual(DEFAULT_PRICING['claude-opus-4-8']);
   });
 
